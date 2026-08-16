@@ -1,9 +1,9 @@
 import express from "express";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
-import { loadConfig, requireAnthropicApiKey } from "./config/env.js";
+import { loadConfig } from "./config/env.js";
 import { RemediationEngine } from "./core/remediationEngine.js";
-import { AnthropicLlmClient } from "./llm/anthropicClient.js";
+import { OllamaLlmClient } from "./llm/ollamaClient.js";
 import { buildIncidentRouter } from "./routes/incidentRoutes.js";
 import { logger } from "./logging/logger.js";
 
@@ -37,9 +37,10 @@ export function buildApp(engine: RemediationEngine): express.Express {
 function main(): void {
   const config = loadConfig();
 
-  const llmClient = new AnthropicLlmClient({
-    apiKey: requireAnthropicApiKey(config),
-    model: config.ANTHROPIC_MODEL,
+  const llmClient = new OllamaLlmClient({
+    baseUrl: config.OLLAMA_BASE_URL,
+    model: config.OLLAMA_MODEL,
+    numCtx: config.OLLAMA_NUM_CTX,
   });
 
   const engine = new RemediationEngine({

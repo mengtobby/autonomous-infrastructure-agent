@@ -16,7 +16,8 @@ export function buildSystemPrompt(): string {
     "4. Provide shell test_commands that can run inside a minimal container of container_image",
     "   to import/execute the new module and assert its behavior matches the requirements.",
     "   The final command's stdout must match expected_output_pattern on success.",
-    "5. You must call the emit_remediation_draft tool exactly once with your complete answer.",
+    "5. Respond with a single JSON object matching the required schema exactly. No markdown",
+    "   fences, no commentary before or after it — the JSON object is your entire response.",
   ].join("\n");
 }
 

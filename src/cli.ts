@@ -5,7 +5,7 @@ import { Command } from "commander";
 import { loadConfig } from "./config/env.js";
 import { incidentAlertSchema } from "./schemas/incident.schema.js";
 import { RemediationEngine } from "./core/remediationEngine.js";
-import { LazyAnthropicLlmClient } from "./llm/lazyAnthropicClient.js";
+import { OllamaLlmClient } from "./llm/ollamaClient.js";
 import { DockerSandboxRunner } from "./sandbox/dockerSandboxRunner.js";
 import { ProcessCommandRunner } from "./sandbox/processCommandRunner.js";
 import { logger } from "./logging/logger.js";
@@ -54,7 +54,11 @@ async function runAnalyze(
   const incident = incidentAlertSchema.parse(JSON.parse(raw));
 
   const engine = new RemediationEngine({
-    llmClient: new LazyAnthropicLlmClient(config),
+    llmClient: new OllamaLlmClient({
+      baseUrl: config.OLLAMA_BASE_URL,
+      model: config.OLLAMA_MODEL,
+      numCtx: config.OLLAMA_NUM_CTX,
+    }),
     defaultResourceLimits: {
       cpu_limit: config.SANDBOX_CPU_LIMIT,
       memory_limit: config.SANDBOX_MEMORY_LIMIT,
