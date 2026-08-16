@@ -1,0 +1,8 @@
+{
+  "incident_id": "INC-20260815-TEL-01",
+  "service_name": "telemetry-collector",
+  "timestamp": "2026-08-15T19:00:00Z",
+  "target_file_path": "/app/collectors/metrics_exporter.py",
+  "error_log": "ModuleNotFoundError: No module named 'collectors.metrics_exporter'\nFile \"/app/main.py\", line 12, in <module>\nfrom collectors.metrics_exporter import PrometheusMetricsExporter\nCRITICAL:worker: Failed to initialize metrics exporter. Exiting with status 1.",
+  "service_requirements_context": "Service requires a PrometheusMetricsExporter class with an export_gauge(name: str, value: float, labels: dict) method and a get_metrics() method returning Prometheus-formatted text strings."
+}

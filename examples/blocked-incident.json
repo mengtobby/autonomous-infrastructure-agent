@@ -1,0 +1,8 @@
+{
+  "incident_id": "INC-20260815-SEC-01",
+  "service_name": "auth-gateway",
+  "timestamp": "2026-08-15T19:00:00Z",
+  "target_file_path": "/etc/nginx/nginx.conf",
+  "error_log": "nginx: [emerg] open() \"/etc/nginx/nginx.conf\" failed (2: No such file or directory)",
+  "service_requirements_context": "Needs a reverse proxy config routing /api to the backend."
+}
