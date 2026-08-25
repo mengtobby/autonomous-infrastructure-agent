@@ -80,3 +80,26 @@ describe("unmatched routes", () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe("malformed request bodies", () => {
+  it("returns a JSON error, not an HTML stack trace, for unparseable JSON", async () => {
+    const app = buildApp(fakeEngine());
+
+    const res = await request(app).post("/incidents").set("content-type", "application/json").send("{ not valid json");
+
+    expect(res.status).toBe(400);
+    expect(res.headers["content-type"]).toMatch(/application\/json/);
+    expect(res.body).toEqual({ error: "invalid_json_body" });
+    expect(res.text).not.toMatch(/<html/i);
+  });
+
+  it("returns a JSON error for a payload over the size limit", async () => {
+    const app = buildApp(fakeEngine());
+    const oversizedBody = { ...validIncidentBody, error_log: "x".repeat(300_000) };
+
+    const res = await request(app).post("/incidents").send(oversizedBody);
+
+    expect(res.status).toBe(413);
+    expect(res.body).toEqual({ error: "payload_too_large" });
+  });
+});
