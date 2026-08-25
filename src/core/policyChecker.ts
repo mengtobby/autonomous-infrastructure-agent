@@ -14,14 +14,23 @@ const SYSTEM_PATH_PATTERNS = [
   /^[a-z]:\\program files/i,
 ];
 
+/** Matches `word` (optionally pluralized) only when it appears as its own
+ * path segment/token — bounded by a path separator, `.`, `_`, `-`, or the
+ * start/end of the string. Using \b here would still match inside
+ * "password_reset_service" (underscore counts as a \w char), producing
+ * false positives on ordinary module names; this boundary set does not. */
+function segmentPattern(word: string): RegExp {
+  return new RegExp(`(?:^|[\\\\/_.-])${word}s?(?:[\\\\/_.-]|$)`, "i");
+}
+
 const SECRET_PATH_PATTERNS = [
   /\.env(\.|$)/i,
   /\.pem$/i,
   /\.key$/i,
   /id_rsa/i,
-  /secret/i,
-  /credential/i,
-  /password/i,
+  segmentPattern("secret"),
+  segmentPattern("credential"),
+  segmentPattern("password"),
 ];
 
 const SHARED_INFRA_PATTERNS = [
