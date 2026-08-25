@@ -77,6 +77,33 @@ describe("DockerSandboxRunner", () => {
     expect(result.timed_out).toBe(true);
   });
 
+  it("kills the named container by name after a timeout, since SIGKILL-ing the CLI doesn't stop it", async () => {
+    const run = vi.fn().mockResolvedValue({ exitCode: null, stdout: "", stderr: "", timedOut: true, durationMs: 30000 });
+    const commandRunner: CommandRunner = { run };
+    const runner = new DockerSandboxRunner({ commandRunner, timeoutSeconds: 30 });
+
+    await runner.run(basePlan);
+
+    expect(run).toHaveBeenCalledTimes(2);
+    const [, firstArgs] = run.mock.calls[0] as [string, string[], number];
+    const [secondCommand, secondArgs] = run.mock.calls[1] as [string, string[], number];
+    const nameFlagIndex = firstArgs.indexOf("--name");
+    expect(nameFlagIndex).toBeGreaterThanOrEqual(0);
+    const containerName = firstArgs[nameFlagIndex + 1];
+
+    expect(secondCommand).toBe("docker");
+    expect(secondArgs).toEqual(["kill", containerName]);
+  });
+
+  it("does not attempt to kill a container when the run completes normally", async () => {
+    const commandRunner = fakeCommandRunner({ exitCode: 0, stdout: "hi\nVERIFIED\n", stderr: "", timedOut: false, durationMs: 42 });
+    const runner = new DockerSandboxRunner({ commandRunner, timeoutSeconds: 30 });
+
+    await runner.run(basePlan);
+
+    expect(commandRunner.run).toHaveBeenCalledTimes(1);
+  });
+
   it("never invokes the command runner for a BLOCKED remediation", async () => {
     const commandRunner = fakeCommandRunner({
       exitCode: 0,

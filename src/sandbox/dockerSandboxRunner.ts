@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { RemediationPlan, SandboxRunResult } from "../schemas/remediation.schema.js";
 import type { CommandRunner } from "./commandRunner.js";
 import { buildSandboxWorkspace } from "./workspaceBuilder.js";
@@ -35,12 +36,15 @@ export class DockerSandboxRunner {
     }
 
     const workspace = await buildSandboxWorkspace(plan.target_file_path, plan.remediation.full_file_content);
+    const containerName = `infra-agent-sandbox-${randomUUID()}`;
 
     try {
       const script = plan.sandbox_verification.test_commands.join(" && ");
       const dockerArgs = [
         "run",
         "--rm",
+        "--name",
+        containerName,
         "--network",
         "none",
         "--pids-limit",
@@ -63,6 +67,16 @@ export class DockerSandboxRunner {
 
       logger.info({ image: plan.sandbox_verification.container_image }, "Running sandbox verification");
       const result = await this.commandRunner.run("docker", dockerArgs, this.timeoutSeconds * 1000);
+
+      // Killing the local `docker run` CLI process (what the timeout above
+      // does) does not stop the container in the daemon — it keeps running,
+      // unbounded, orphaned from `--rm`'s normal-exit cleanup. Kill it by
+      // name as a second step so a timed-out run never leaks a container.
+      if (result.timedOut) {
+        await this.commandRunner.run("docker", ["kill", containerName], 10_000).catch((error: unknown) => {
+          logger.warn({ containerName, err: error }, "Failed to kill orphaned sandbox container after timeout");
+        });
+      }
 
       const passed = !result.timedOut && result.exitCode === 0 && matchesPattern(result.stdout + result.stderr, plan.sandbox_verification.expected_output_pattern);
 
