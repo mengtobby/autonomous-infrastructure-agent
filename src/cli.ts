@@ -58,6 +58,7 @@ async function runAnalyze(
       baseUrl: config.OLLAMA_BASE_URL,
       model: config.OLLAMA_MODEL,
       numCtx: config.OLLAMA_NUM_CTX,
+      requestTimeoutMs: config.OLLAMA_REQUEST_TIMEOUT_SECONDS * 1000,
     }),
     defaultResourceLimits: {
       cpu_limit: config.SANDBOX_CPU_LIMIT,

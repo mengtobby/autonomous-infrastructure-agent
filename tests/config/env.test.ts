@@ -17,6 +17,7 @@ describe("loadConfig", () => {
   it("applies documented defaults when optional vars are unset", () => {
     delete process.env.OLLAMA_BASE_URL;
     delete process.env.OLLAMA_MODEL;
+    delete process.env.OLLAMA_REQUEST_TIMEOUT_SECONDS;
     delete process.env.PORT;
     delete process.env.SANDBOX_CPU_LIMIT;
 
@@ -24,6 +25,7 @@ describe("loadConfig", () => {
 
     expect(config.OLLAMA_BASE_URL).toBe("http://localhost:11434");
     expect(config.OLLAMA_MODEL).toBe("qwen2.5-coder:7b");
+    expect(config.OLLAMA_REQUEST_TIMEOUT_SECONDS).toBe(180);
     expect(config.PORT).toBe(8787);
     expect(config.SANDBOX_CPU_LIMIT).toBe("0.5");
   });

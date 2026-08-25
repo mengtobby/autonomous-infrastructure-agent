@@ -143,7 +143,12 @@ async function main(): Promise<void> {
 
   const engine = runGeneration
     ? new RemediationEngine({
-        llmClient: new OllamaLlmClient({ baseUrl: config.OLLAMA_BASE_URL, model: config.OLLAMA_MODEL, numCtx: config.OLLAMA_NUM_CTX }),
+        llmClient: new OllamaLlmClient({
+          baseUrl: config.OLLAMA_BASE_URL,
+          model: config.OLLAMA_MODEL,
+          numCtx: config.OLLAMA_NUM_CTX,
+          requestTimeoutMs: config.OLLAMA_REQUEST_TIMEOUT_SECONDS * 1000,
+        }),
         defaultResourceLimits: { cpu_limit: config.SANDBOX_CPU_LIMIT, memory_limit: config.SANDBOX_MEMORY_LIMIT },
       })
     : null;

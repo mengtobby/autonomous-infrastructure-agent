@@ -41,6 +41,7 @@ function main(): void {
     baseUrl: config.OLLAMA_BASE_URL,
     model: config.OLLAMA_MODEL,
     numCtx: config.OLLAMA_NUM_CTX,
+    requestTimeoutMs: config.OLLAMA_REQUEST_TIMEOUT_SECONDS * 1000,
   });
 
   const engine = new RemediationEngine({

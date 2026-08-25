@@ -5,6 +5,7 @@ const envSchema = z.object({
   OLLAMA_BASE_URL: z.string().url().default("http://localhost:11434"),
   OLLAMA_MODEL: z.string().min(1).default("qwen2.5-coder:7b"),
   OLLAMA_NUM_CTX: z.coerce.number().int().positive().default(8192),
+  OLLAMA_REQUEST_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(180),
   PORT: z.coerce.number().int().positive().default(8787),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
   SANDBOX_CPU_LIMIT: z.string().min(1).default("0.5"),

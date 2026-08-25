@@ -96,4 +96,46 @@ describe("OllamaLlmClient", () => {
 
     await expect(client.generateRemediationDraft(incident, policyCheck)).rejects.toThrow();
   });
+
+  it("sets num_predict to -1 so the model isn't cut off at Ollama's default 128-token cap", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(chatResponse(JSON.stringify(validDraft)));
+    const client = new OllamaLlmClient({ baseUrl: "http://localhost:11434", model: "m", fetchImpl });
+
+    await client.generateRemediationDraft(incident, policyCheck);
+
+    const body = JSON.parse((fetchImpl.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.options.num_predict).toBe(-1);
+  });
+
+  it("aborts the request once requestTimeoutMs elapses and reports a clear timeout error", async () => {
+    const fetchImpl = vi.fn().mockImplementation((_url: string, init: RequestInit) => {
+      return new Promise((_resolve, reject) => {
+        init.signal?.addEventListener("abort", () => {
+          const err = new Error("The operation was aborted");
+          err.name = "AbortError";
+          reject(err);
+        });
+      });
+    });
+
+    const client = new OllamaLlmClient({
+      baseUrl: "http://localhost:11434",
+      model: "m",
+      maxAttempts: 1,
+      requestTimeoutMs: 10,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    await expect(client.generateRemediationDraft(incident, policyCheck)).rejects.toThrow(/timed out after 0.01s/);
+  });
+
+  it("passes an AbortSignal on every request so a hung server doesn't block forever", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(chatResponse(JSON.stringify(validDraft)));
+    const client = new OllamaLlmClient({ baseUrl: "http://localhost:11434", model: "m", fetchImpl });
+
+    await client.generateRemediationDraft(incident, policyCheck);
+
+    const init = fetchImpl.mock.calls[0][1] as RequestInit;
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
 });
