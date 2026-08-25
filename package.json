@@ -18,15 +18,18 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "lint": "eslint src tests --ext .ts",
-    "typecheck": "tsc --noEmit"
+    "lint": "eslint src tests evals --ext .ts",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.evals.json --noEmit",
+    "eval": "tsx evals/run.ts",
+    "eval:generate": "tsx evals/run.ts --generate",
+    "eval:full": "tsx evals/run.ts --full"
   },
   "keywords": [
     "sre",
     "incident-response",
     "remediation",
-    "anthropic",
-    "claude"
+    "ollama",
+    "local-llm"
   ],
   "license": "MIT",
   "dependencies": {
