@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { dirname } from "node:path";
 import { Command } from "commander";
 import { loadConfig } from "./config/env.js";
 import { incidentAlertSchema } from "./schemas/incident.schema.js";
@@ -8,6 +8,7 @@ import { RemediationEngine } from "./core/remediationEngine.js";
 import { OllamaLlmClient } from "./llm/ollamaClient.js";
 import { DockerSandboxRunner } from "./sandbox/dockerSandboxRunner.js";
 import { ProcessCommandRunner } from "./sandbox/processCommandRunner.js";
+import { resolveWriteTarget } from "./cli/resolveWriteTarget.js";
 import { logger } from "./logging/logger.js";
 import type { RemediationPlan } from "./schemas/remediation.schema.js";
 
@@ -78,10 +79,17 @@ async function runAnalyze(
   }
 
   if (options.write && plan.policy_check.is_safe_to_remediate && plan.remediation.action === "CREATE_FILE") {
-    const targetPath = resolve(plan.target_file_path.replace(/^\/+/, ""));
-    await mkdir(dirname(targetPath), { recursive: true });
-    await writeFile(targetPath, plan.remediation.full_file_content, "utf8");
-    logger.info({ targetPath }, "Remediation file written to disk");
+    const { path: targetPath, withinProjectRoot } = resolveWriteTarget(process.cwd(), plan.target_file_path);
+    if (!withinProjectRoot) {
+      logger.warn(
+        { targetFilePath: plan.target_file_path, resolvedPath: targetPath },
+        "Refusing to write remediation file outside the current working directory"
+      );
+    } else {
+      await mkdir(dirname(targetPath), { recursive: true });
+      await writeFile(targetPath, plan.remediation.full_file_content, "utf8");
+      logger.info({ targetPath }, "Remediation file written to disk");
+    }
   }
 
   return plan;
