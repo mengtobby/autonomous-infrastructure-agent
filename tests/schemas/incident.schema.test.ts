@@ -24,6 +24,11 @@ describe("incidentAlertSchema", () => {
     expect(() => incidentAlertSchema.parse({ ...validIncident, timestamp: "not-a-date" })).toThrow();
   });
 
+  it("accepts a timestamp with a numeric UTC offset, not just a literal Z suffix", () => {
+    expect(() => incidentAlertSchema.parse({ ...validIncident, timestamp: "2026-08-15T19:00:00+00:00" })).not.toThrow();
+    expect(() => incidentAlertSchema.parse({ ...validIncident, timestamp: "2026-08-15T15:00:00-04:00" })).not.toThrow();
+  });
+
   it("rejects an empty error_log", () => {
     expect(() => incidentAlertSchema.parse({ ...validIncident, error_log: "" })).toThrow();
   });
