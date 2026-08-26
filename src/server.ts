@@ -5,6 +5,7 @@ import { loadConfig } from "./config/env.js";
 import { RemediationEngine } from "./core/remediationEngine.js";
 import { OllamaLlmClient } from "./llm/ollamaClient.js";
 import { buildIncidentRouter } from "./routes/incidentRoutes.js";
+import { isMainModule } from "./isMainModule.js";
 import { logger } from "./logging/logger.js";
 
 export function buildApp(engine: RemediationEngine): express.Express {
@@ -96,7 +97,6 @@ function main(): void {
   });
 }
 
-const isMainModule = process.argv[1] && import.meta.url === `file://${process.argv[1].replace(/\\/g, "/")}`;
-if (isMainModule) {
+if (isMainModule(process.argv[1], import.meta.url)) {
   main();
 }
