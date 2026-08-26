@@ -12,6 +12,12 @@ import { resolveWriteTarget } from "./cli/resolveWriteTarget.js";
 import { logger } from "./logging/logger.js";
 import type { RemediationPlan } from "./schemas/remediation.schema.js";
 
+interface AnalyzeOptions {
+  verify: boolean;
+  write: boolean;
+  out?: string;
+}
+
 const program = new Command();
 
 program
@@ -26,7 +32,7 @@ program
   .option("--verify", "run the drafted remediation through Docker sandbox verification", false)
   .option("--write", "write the remediation file to its target_file_path if policy allows it", false)
   .option("--out <file>", "write the remediation plan JSON to a file instead of stdout")
-  .action(async (incidentFile: string, options: { verify: boolean; write: boolean; out?: string }) => {
+  .action(async (incidentFile: string, options: AnalyzeOptions) => {
     try {
       const plan = await runAnalyze(incidentFile, options);
       const json = JSON.stringify(plan, null, 2);
@@ -46,10 +52,7 @@ program
     }
   });
 
-async function runAnalyze(
-  incidentFile: string,
-  options: { verify: boolean; write: boolean }
-): Promise<RemediationPlan> {
+async function runAnalyze(incidentFile: string, options: AnalyzeOptions): Promise<RemediationPlan> {
   const config = loadConfig();
   const raw = await readFile(incidentFile, "utf8");
   const incident = incidentAlertSchema.parse(JSON.parse(raw));

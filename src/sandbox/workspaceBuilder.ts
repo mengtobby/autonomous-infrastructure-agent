@@ -8,17 +8,14 @@ const KNOWN_APP_ROOTS = ["/app/", "/src/", "/workspace/"];
  * Windows-style separators so the path can be replayed as a relative POSIX
  * path inside a Linux container. */
 export function toContainerRelativePath(targetFilePath: string): string {
-  let path = targetFilePath.trim().replace(/\\/g, "/");
+  const normalized = targetFilePath.trim().replace(/\\/g, "/");
+  const matchedRoot = KNOWN_APP_ROOTS.find((root) => normalized.startsWith(root));
 
-  for (const root of KNOWN_APP_ROOTS) {
-    if (path.startsWith(root)) {
-      path = path.slice(root.length);
-      return posix.normalize(path);
-    }
-  }
+  const relative = matchedRoot
+    ? normalized.slice(matchedRoot.length)
+    : normalized.replace(/^[a-zA-Z]:\//, "").replace(/^\/+/, "");
 
-  path = path.replace(/^[a-zA-Z]:\//, "").replace(/^\/+/, "");
-  return posix.normalize(path);
+  return posix.normalize(relative);
 }
 
 export interface SandboxWorkspace {
@@ -33,7 +30,7 @@ export interface SandboxWorkspace {
 export async function buildSandboxWorkspace(targetFilePath: string, fileContent: string): Promise<SandboxWorkspace> {
   const workspaceDir = await mkdtemp(join(tmpdir(), "infra-agent-sandbox-"));
   const relativeFilePath = toContainerRelativePath(targetFilePath);
-  const absoluteFilePath = join(workspaceDir, ...relativeFilePath.split("/"));
+  const absoluteFilePath = join(workspaceDir, relativeFilePath);
 
   await mkdir(dirname(absoluteFilePath), { recursive: true });
   await writeFile(absoluteFilePath, fileContent, "utf8");

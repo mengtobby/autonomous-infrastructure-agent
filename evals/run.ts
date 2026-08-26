@@ -93,6 +93,7 @@ async function evaluateFixture(fixture: EvalFixture, engine: RemediationEngine |
     checks.push({
       label: "sandbox verification (informational)",
       passed: sandboxResult.passed,
+      informational: true,
       detail: sandboxResult.passed
         ? undefined
         : `exit_code=${String(sandboxResult.exit_code)} timed_out=${sandboxResult.timed_out} stdout/stderr=${(sandboxResult.stdout + sandboxResult.stderr).slice(0, 300)}`,
@@ -173,7 +174,7 @@ async function main(): Promise<void> {
 
   printSummary(results);
 
-  const hasFailure = results.some((r) => !r.skipped && r.checks.some((c) => !c.passed && !c.label.includes("(informational)")));
+  const hasFailure = results.some((r) => !r.skipped && r.checks.some((c) => !c.passed && !c.informational));
   process.exitCode = hasFailure ? 1 : 0;
 }
 

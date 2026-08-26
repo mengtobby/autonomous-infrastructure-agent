@@ -36,6 +36,10 @@ export interface EvalCheck {
   label: string;
   passed: boolean;
   detail?: string;
+  /** True for a check that's reported but doesn't fail the overall run —
+   * e.g. real Docker sandbox verification, which can fail for reasons
+   * unrelated to draft quality (Docker not running, image pull issues). */
+  informational?: boolean;
 }
 
 export interface EvalResult {
