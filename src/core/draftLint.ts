@@ -1,13 +1,19 @@
 import type { LlmRemediationDraft } from "../schemas/remediation.schema.js";
 
 const JSON_FILE = /\.(json|jsonc|json5)$/i;
-const PLACEHOLDER = /\b(TODO|FIXME)\b|NotImplementedError|NotImplemented\b|implement (me|later)|your code here/i;
+/** TODO/FIXME are matched case-sensitively so prose like "todo items" or an
+ * identifier like TodoList isn't mistaken for an unfinished stub. */
+const PLACEHOLDER_MARKER = /\b(?:TODO|FIXME)\b/;
+const PLACEHOLDER_PHRASE = /NotImplemented(?:Error)?\b|implement (?:me|later)|your code here/i;
 const MARKDOWN_FENCE = /^\s*```/m;
 const JSON_OBJECT_START = /^\{\s*"[^"\n]+"\s*:/;
 
 /** Commands that need network or the host — pointless (and misleading) in a
- * sandbox that has no network and no Docker socket. */
-const UNAVAILABLE_COMMAND = /\b(pip3?\s+install|npm\s+(install|i|ci)|yarn\s+add|apt(-get)?\s+install|apk\s+add|curl|wget|docker|sudo|git\s+clone)\b/i;
+ * sandbox that has no network and no Docker socket. Program names are only
+ * matched in command position, so a path like "docker-compose.yml" or an
+ * argument that merely mentions curl does not trigger it. */
+const UNAVAILABLE_COMMAND =
+  /(?:^|[;&|]\s*)(?:sudo|docker|curl|wget)\s|\b(?:pip3?\s+install|npm\s+(?:install|i|ci)|yarn\s+add|apt(?:-get)?\s+install|apk\s+add|git\s+clone)\b/i;
 
 /** Patterns that match any output, so "passing" would only prove exit code 0. */
 const MATCH_ANYTHING = new Set(["", ".", ".*", ".+", ".*?", "^.*$", "^.+$", "^$", "(?s).*"]);
@@ -38,7 +44,7 @@ export function lintDraft(draft: LlmRemediationDraft, targetFilePath: string): s
     issues.push("full_file_content contains markdown code fences (```). Return the raw file text with no fences.");
   }
 
-  if (PLACEHOLDER.test(content)) {
+  if (PLACEHOLDER_MARKER.test(content) || PLACEHOLDER_PHRASE.test(content)) {
     issues.push("full_file_content contains a placeholder (TODO / NotImplemented / 'implement later'). Implement everything fully.");
   }
 

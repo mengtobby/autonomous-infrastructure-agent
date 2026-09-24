@@ -56,6 +56,19 @@ describe("lintDraft", () => {
     }
   );
 
+  it("does not mistake a docker-compose file path for a docker command", () => {
+    expect(lint({ test_commands: ["python -c \"print(open('deploy/docker-compose.yml').read())\""] })).toEqual([]);
+  });
+
+  it("flags a docker or curl command chained after another command", () => {
+    expect(lint({ test_commands: ["echo start && docker ps"] }).some((i) => /cannot work in the sandbox/.test(i))).toBe(true);
+    expect(lint({ test_commands: ["echo start; curl http://x"] }).some((i) => /cannot work in the sandbox/.test(i))).toBe(true);
+  });
+
+  it("does not treat prose or identifiers containing 'todo' as a placeholder", () => {
+    expect(lint({ full_file_content: "// keeps todo items sorted\nexport class TodoList {}\n" })).toEqual([]);
+  });
+
   it("flags an empty test command", () => {
     expect(lint({ test_commands: ["  "] }).some((i) => /empty command/.test(i))).toBe(true);
   });
