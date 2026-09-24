@@ -375,3 +375,35 @@ describe("static dashboard", () => {
     expect(res.headers["content-security-policy"]).toMatch(/script-src 'self'/);
   });
 });
+
+describe("behind a reverse proxy", () => {
+  it("rate-limits each visitor by their forwarded address once TRUST_PROXY is set", async () => {
+    const engine = fakeEngine();
+    const app = buildApp({ engine, runs: new RunManager({ engine }), info, maxRepairAttempts: 2, publicDir: tmpdir(), trustProxy: 1 });
+
+    // 30 requests from one visitor use up their allowance...
+    for (let i = 0; i < 30; i += 1) {
+      await request(app).post("/incidents").set("x-forwarded-for", "203.0.113.7").send(validIncidentBody);
+    }
+    const blocked = await request(app).post("/incidents").set("x-forwarded-for", "203.0.113.7").send(validIncidentBody);
+    // ...but a different visitor behind the same proxy is unaffected.
+    const other = await request(app).post("/incidents").set("x-forwarded-for", "198.51.100.9").send(validIncidentBody);
+
+    expect(blocked.status).toBe(429);
+    expect(blocked.body).toEqual({ error: "rate_limited" });
+    expect(other.status).toBe(200);
+  }, 30_000);
+
+  it("keeps visitors separate only when the proxy is trusted (otherwise the header is ignored)", async () => {
+    const engine = fakeEngine();
+    const app = buildApp({ engine, runs: new RunManager({ engine }), info, maxRepairAttempts: 2, publicDir: tmpdir() });
+
+    for (let i = 0; i < 30; i += 1) {
+      await request(app).post("/incidents").set("x-forwarded-for", `203.0.113.${i}`).send(validIncidentBody);
+    }
+    // A spoofed header must not buy a fresh allowance when no proxy is configured.
+    const spoofed = await request(app).post("/incidents").set("x-forwarded-for", "198.51.100.200").send(validIncidentBody);
+
+    expect(spoofed.status).toBe(429);
+  }, 30_000);
+});

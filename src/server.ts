@@ -25,10 +25,15 @@ export interface AppDeps {
   info: RuntimeInfo;
   maxRepairAttempts: number;
   publicDir?: string;
+  /** Reverse proxies in front of this server; see TRUST_PROXY. */
+  trustProxy?: number;
 }
 
 export function buildApp(deps: AppDeps): express.Express {
   const app = express();
+  if (deps.trustProxy) {
+    app.set("trust proxy", deps.trustProxy);
+  }
 
   app.use(
     helmet({
@@ -120,6 +125,7 @@ export async function startServer(config: AppConfig = loadConfig()): Promise<Ser
     runs,
     info: runtime.info,
     maxRepairAttempts: config.MAX_REPAIR_ATTEMPTS,
+    trustProxy: config.TRUST_PROXY,
   });
 
   if (config.SANDBOX_MODE !== "off" && !runtime.info.sandbox.available) {

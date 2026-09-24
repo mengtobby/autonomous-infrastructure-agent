@@ -21,6 +21,9 @@ const envSchema = z.object({
   OLLAMA_NUM_CTX: z.coerce.number().int().positive().default(8192),
   OLLAMA_REQUEST_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(180),
   PORT: z.coerce.number().int().positive().default(8787),
+  /** Number of reverse proxies in front of the server (e.g. 1 on most PaaS).
+   * Without it, every visitor behind a proxy shares one IP and one rate limit. */
+  TRUST_PROXY: z.coerce.number().int().min(0).max(10).default(0),
   LOG_LEVEL: z.enum(["silent", "fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
   SANDBOX_CPU_LIMIT: z.string().min(1).default("0.5"),
   SANDBOX_MEMORY_LIMIT: z.string().min(1).default("256m"),
