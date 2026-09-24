@@ -1,6 +1,6 @@
 {
   "name": "autonomous-infra-agent",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Autonomous SRE agent that analyzes microservice incident alerts, drafts remediations for missing/empty modules, and verifies them in a sandboxed Docker container before deployment.",
   "type": "module",
   "main": "dist/index.js",

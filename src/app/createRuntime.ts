@@ -21,6 +21,8 @@ export interface Runtime {
 export interface RuntimeOptions {
   /** Attach the sandbox so drafts are executed and repaired. */
   verify: boolean;
+  /** Overrides MAX_REPAIR_ATTEMPTS for this runtime. */
+  maxRepairAttempts?: number;
 }
 
 export function createLlmClient(config: AppConfig): LlmClient {
@@ -47,7 +49,7 @@ export async function createRuntime(config: AppConfig, options: RuntimeOptions):
     llmClient: createLlmClient(config),
     defaultResourceLimits: { cpu_limit: config.SANDBOX_CPU_LIMIT, memory_limit: config.SANDBOX_MEMORY_LIMIT },
     verifier: sandbox.runner,
-    maxRepairAttempts: config.MAX_REPAIR_ATTEMPTS,
+    maxRepairAttempts: options.maxRepairAttempts ?? config.MAX_REPAIR_ATTEMPTS,
   });
 
   return {
