@@ -1,0 +1,128 @@
+/* Design tokens. One neutral ramp, one accent, and semantic colours that only
+   ever mean state (success, failure, warning). Light is tuned for a bright
+   office screen; dark for a dim room. Both are first-class. */
+
+:root {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI Variable Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+  /* Fixed rem scale for a product UI (ratio ~1.15): no fluid type. */
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.875rem;
+  --text-md: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  --topbar-height: 52px;
+  --sidebar-width: 308px;
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --duration: 180ms;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #ffffff;
+  --bg-subtle: #f7f8fa;
+  --surface: #ffffff;
+  --sunken: #f6f7f9;
+  --hover: #eef0f3;
+  --selected: #e8ebf0;
+  --border: #e3e6ea;
+  --border-strong: #c9ced6;
+
+  --text: #14161a;
+  --text-2: #444b57;
+  --text-3: #5d6572;
+
+  --accent: #4338ca;
+  --accent-soft: #eef0ff;
+  --focus: #4338ca;
+
+  --primary-bg: #14161a;
+  --primary-fg: #ffffff;
+  --primary-hover: #2a2e36;
+
+  --success: #15803d;
+  --success-soft: #e8f7ee;
+  --success-strong: #0f5f2e;
+  --danger: #b42318;
+  --danger-soft: #fdeceb;
+  --danger-strong: #8f1c12;
+  --warning: #a15c07;
+  --warning-soft: #fff4dd;
+  --warning-strong: #714003;
+
+  --add-bg: #e7f6ec;
+  --add-mark: #b6e6c6;
+  --del-bg: #fdecea;
+  --del-mark: #f6c1bb;
+
+  --tok-keyword: #6d28d9;
+  --tok-string: #0b6b3a;
+  --tok-comment: #626b78;
+  --tok-number: #9a4a06;
+
+  --shadow-popover: 0 12px 32px rgb(15 17 20 / 0.14), 0 2px 8px rgb(15 17 20 / 0.08);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #0a0b0d;
+  --bg-subtle: #0f1013;
+  --surface: #111316;
+  --sunken: #0c0d10;
+  --hover: #17191d;
+  --selected: #1d2025;
+  --border: #23262b;
+  --border-strong: #363a42;
+
+  --text: #ededf0;
+  --text-2: #b2b7c1;
+  --text-3: #9198a4;
+
+  --accent: #a3a9ff;
+  --accent-soft: #1a1d3a;
+  --focus: #a3a9ff;
+
+  --primary-bg: #ededf0;
+  --primary-fg: #0a0b0d;
+  --primary-hover: #ffffff;
+
+  --success: #4ade80;
+  --success-soft: #0f2a1a;
+  --success-strong: #86efac;
+  --danger: #ff8a80;
+  --danger-soft: #2c1412;
+  --danger-strong: #ffb4ad;
+  --warning: #f5b544;
+  --warning-soft: #2b200a;
+  --warning-strong: #ffd48a;
+
+  --add-bg: rgb(74 222 128 / 0.1);
+  --add-mark: rgb(74 222 128 / 0.3);
+  --del-bg: rgb(255 138 128 / 0.1);
+  --del-mark: rgb(255 138 128 / 0.3);
+
+  --tok-keyword: #c7a8ff;
+  --tok-string: #7ee2a8;
+  --tok-comment: #8b93a1;
+  --tok-number: #f0b775;
+
+  --shadow-popover: 0 12px 32px rgb(0 0 0 / 0.55), 0 2px 8px rgb(0 0 0 / 0.4);
+}
