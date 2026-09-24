@@ -21,14 +21,22 @@ if (process.env.LLM_PROVIDER === "replay") {
 const { loadConfig } = await import("./config/env.js");
 const { startServer } = await import("./server.js");
 
+const { openBrowser } = await import("./openBrowser.js");
+
 const config = loadConfig();
 const server = await startServer(config);
+const url = `http://localhost:${config.PORT}`;
+
+// Set NO_OPEN=1 to keep the browser closed (e.g. on a server or in CI).
+if (!process.env.NO_OPEN && process.stdout.isTTY) {
+  openBrowser(url);
+}
 
 process.stdout.write(
   [
     "",
     "  Autonomous Infra Agent",
-    `  ▸ Dashboard   http://localhost:${config.PORT}`,
+    `  ▸ Dashboard   ${url}`,
     `  ▸ Model       ${config.LLM_PROVIDER === "replay" ? "recorded drafts (replay mode)" : config.OLLAMA_MODEL}`,
     `  ▸ Sandbox     ${config.SANDBOX_MODE}`,
     "",
