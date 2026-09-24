@@ -1,33 +1,72 @@
+import type { Server } from "node:http";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import express from "express";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
-import { loadConfig } from "./config/env.js";
-import { RemediationEngine } from "./core/remediationEngine.js";
-import { OllamaLlmClient } from "./llm/ollamaClient.js";
+import { createRuntime, type RuntimeInfo } from "./app/createRuntime.js";
+import { loadConfig, type AppConfig } from "./config/env.js";
+import type { RemediationEngine } from "./core/remediationEngine.js";
+import { demoScenarios } from "./demo/scenarios/index.js";
+import { RunManager } from "./runs/runManager.js";
 import { buildIncidentRouter } from "./routes/incidentRoutes.js";
+import { buildRunRouter } from "./routes/runRoutes.js";
 import { isMainModule } from "./isMainModule.js";
 import { logger } from "./logging/logger.js";
 
-export function buildApp(engine: RemediationEngine): express.Express {
+/** The dashboard's static files. Resolved relative to this module so it works
+ * from both src/ (tsx) and dist/ (compiled) — each sits one level below the root. */
+const DEFAULT_PUBLIC_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..", "public");
+
+export interface AppDeps {
+  /** Backs the synchronous POST /incidents webhook. */
+  engine: RemediationEngine;
+  runs: RunManager;
+  info: RuntimeInfo;
+  maxRepairAttempts: number;
+  publicDir?: string;
+}
+
+export function buildApp(deps: AppDeps): express.Express {
   const app = express();
 
-  app.use(helmet());
-  app.use(express.json({ limit: "256kb" }));
   app.use(
-    rateLimit({
-      windowMs: 60_000,
-      limit: 30,
-      standardHeaders: true,
-      legacyHeaders: false,
-      message: { error: "rate_limited" },
+    helmet({
+      contentSecurityPolicy: {
+        useDefaults: true,
+        // The default `upgrade-insecure-requests` makes Safari rewrite this
+        // page's http://localhost requests to https, which breaks the dashboard.
+        directives: { "upgrade-insecure-requests": null },
+      },
     })
   );
+  app.use(express.json({ limit: "256kb" }));
+
+  // Only the endpoints that start work are limited; reads and the SSE stream aren't.
+  const startWorkLimiter = rateLimit({
+    windowMs: 60_000,
+    limit: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "rate_limited" },
+  });
 
   app.get("/healthz", (_req, res) => {
     res.status(200).json({ status: "ok" });
   });
 
-  app.use(buildIncidentRouter(engine));
+  app.use(buildIncidentRouter(deps.engine, startWorkLimiter));
+  app.use(
+    buildRunRouter({
+      runs: deps.runs,
+      info: deps.info,
+      scenarios: demoScenarios,
+      maxRepairAttempts: deps.maxRepairAttempts,
+      startRunLimiter: startWorkLimiter,
+    })
+  );
+
+  app.use(express.static(deps.publicDir ?? DEFAULT_PUBLIC_DIR, { maxAge: 0 }));
 
   app.use((_req, res) => {
     res.status(404).json({ error: "not_found" });
@@ -72,31 +111,49 @@ function getClientErrorStatus(err: unknown): number | undefined {
   return undefined;
 }
 
-function main(): void {
-  const config = loadConfig();
+export async function startServer(config: AppConfig = loadConfig()): Promise<Server> {
+  const runtime = await createRuntime(config, { verify: config.SANDBOX_MODE !== "off" });
+  const runs = new RunManager({ engine: runtime.engine });
 
-  const llmClient = new OllamaLlmClient({
-    baseUrl: config.OLLAMA_BASE_URL,
-    model: config.OLLAMA_MODEL,
-    numCtx: config.OLLAMA_NUM_CTX,
-    requestTimeoutMs: config.OLLAMA_REQUEST_TIMEOUT_SECONDS * 1000,
+  const app = buildApp({
+    engine: runtime.engine,
+    runs,
+    info: runtime.info,
+    maxRepairAttempts: config.MAX_REPAIR_ATTEMPTS,
   });
 
-  const engine = new RemediationEngine({
-    llmClient,
-    defaultResourceLimits: {
-      cpu_limit: config.SANDBOX_CPU_LIMIT,
-      memory_limit: config.SANDBOX_MEMORY_LIMIT,
-    },
-  });
+  if (config.SANDBOX_MODE !== "off" && !runtime.info.sandbox.available) {
+    logger.warn({ sandbox: runtime.info.sandbox }, "Sandbox is not available; runs will end UNVERIFIED");
+  }
 
-  const app = buildApp(engine);
-
-  app.listen(config.PORT, () => {
-    logger.info({ port: config.PORT }, "autonomous-infra-agent webhook server listening");
+  return new Promise<Server>((resolveServer, reject) => {
+    const server = app.listen(config.PORT, () => {
+      logger.info(
+        { port: config.PORT, provider: runtime.info.provider, sandbox: runtime.info.sandbox.mode },
+        `autonomous-infra-agent listening — dashboard at http://localhost:${config.PORT}`
+      );
+      resolveServer(server);
+    });
+    server.on("error", reject);
   });
 }
 
+function installShutdownHandlers(server: Server): void {
+  const shutdown = (): void => {
+    logger.info("Shutting down");
+    // Open SSE streams would otherwise keep the process alive.
+    server.closeAllConnections();
+    server.close(() => process.exit(0));
+  };
+  process.once("SIGINT", shutdown);
+  process.once("SIGTERM", shutdown);
+}
+
 if (isMainModule(process.argv[1], import.meta.url)) {
-  main();
+  startServer()
+    .then(installShutdownHandlers)
+    .catch((error: unknown) => {
+      logger.error({ err: error }, "Failed to start server");
+      process.exitCode = 1;
+    });
 }

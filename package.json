@@ -1,7 +1,7 @@
 {
   "name": "autonomous-infra-agent",
   "version": "0.2.0",
-  "description": "Autonomous SRE agent that analyzes microservice incident alerts, drafts remediations for missing/empty modules, and verifies them in a sandboxed Docker container before deployment.",
+  "description": "Autonomous SRE agent: drafts a fix for a crashing service, proves it in a sandbox, and repairs it when it fails — with a deterministic safety gate the model cannot talk its way past.",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -12,6 +12,9 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "demo": "tsx src/demo.ts",
+    "demo:built": "node dist/demo.js",
     "dev": "tsx src/cli.ts",
     "cli": "tsx src/cli.ts",
     "server": "tsx src/server.ts",

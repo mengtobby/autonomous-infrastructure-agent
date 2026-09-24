@@ -1,12 +1,14 @@
-import { Router, type Request, type Response } from "express";
+import { Router, type Request, type RequestHandler, type Response } from "express";
 import { incidentAlertSchema } from "../schemas/incident.schema.js";
 import type { RemediationEngine } from "../core/remediationEngine.js";
 import { logger } from "../logging/logger.js";
 
-export function buildIncidentRouter(engine: RemediationEngine): Router {
+/** Synchronous webhook: submit an incident, get the finished plan back. For
+ * live progress use the /api/runs endpoints instead. */
+export function buildIncidentRouter(engine: RemediationEngine, limiter: RequestHandler): Router {
   const router = Router();
 
-  router.post("/incidents", async (req: Request, res: Response) => {
+  router.post("/incidents", limiter, async (req: Request, res: Response) => {
     const parsed = incidentAlertSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({
