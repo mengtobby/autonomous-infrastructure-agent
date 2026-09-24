@@ -23,7 +23,11 @@ export function buildVerdict({ model }) {
       "div",
       { class: "verdict-text" },
       h("p", { class: "verdict-headline" }, outcomeHeadline(verdict, repairCount(model))),
-      h("p", { class: "verdict-body" }, describeNow(model, null).text)
+      h("p", { class: "verdict-body" }, describeNow(model, null).text),
+      // The model writes the tests as well as the code, so VERIFIED is evidence, not a guarantee.
+      verdict === "VERIFIED"
+        ? h("p", { class: "verdict-caveat" }, "The agent wrote these tests itself, so review the code before you deploy it.")
+        : null
     ),
     facts.length > 0 ? h("p", { class: "verdict-facts" }, facts.join(" · ")) : null
   );

@@ -228,6 +228,65 @@ describe("RemediationEngine — verification", () => {
   });
 });
 
+describe("RemediationEngine — verification integrity", () => {
+  it("REGRESSION: never runs, let alone verifies, a draft whose tests do not touch its file", async () => {
+    const selfGraded: LlmRemediationDraft = { ...draft, full_file_content: "raise SystemExit(1)\n", test_commands: ["echo VERIFIED"] };
+    const llmClient = fakeLlmClient({ generateRemediationDraft: vi.fn().mockResolvedValue(selfGraded) });
+    const verifier = fakeVerifier(passingResult);
+    const engine = new RemediationEngine({ llmClient, defaultResourceLimits, verifier });
+
+    const plan = await engine.remediate(incident);
+
+    // Attempt 1 was rejected before execution; only the repaired draft ever reached the sandbox.
+    expect(plan.attempts?.[0]?.sandbox_run_result).toBeNull();
+    expect(plan.attempts?.[0]?.lint_issues.join(" ")).toMatch(/never import or run metrics_exporter.py/);
+    expect(verifier.run).toHaveBeenCalledTimes(1);
+    const executed = (verifier.run as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
+    expect(executed.testCommands.join(" ")).toContain("metrics_exporter");
+  });
+
+  it("freezes sound tests: a repair may change the file but not the tests", async () => {
+    const cheating: LlmRemediationDraft = {
+      ...repairedDraft,
+      test_commands: ["echo metrics_exporter VERIFIED"],
+      expected_output_pattern: "VERIFIED",
+      container_image: "node:20-slim",
+    };
+    const llmClient = fakeLlmClient({ repairRemediationDraft: vi.fn().mockResolvedValue(cheating) });
+    const verifier = fakeVerifier(failingResult, passingResult);
+    const engine = new RemediationEngine({ llmClient, defaultResourceLimits, verifier });
+
+    const plan = await engine.remediate(incident);
+
+    const secondRun = (verifier.run as ReturnType<typeof vi.fn>).mock.calls[1]?.[0];
+    expect(secondRun.testCommands).toEqual(draft.test_commands);
+    expect(secondRun.containerImage).toBe(draft.container_image);
+    expect(secondRun.fileContent).toBe(cheating.full_file_content);
+    expect(plan.attempts?.[1]?.test_commands).toEqual(draft.test_commands);
+    expect(plan.sandbox_verification.test_commands).toEqual(draft.test_commands);
+  });
+
+  it("lets the model fix its tests only while they are unsound, then freezes the first sound set", async () => {
+    const unsound: LlmRemediationDraft = { ...draft, test_commands: ["echo VERIFIED"] };
+    const soundRepair: LlmRemediationDraft = { ...repairedDraft, test_commands: ["python -c \"import collectors.metrics_exporter; print('VERIFIED')\""] };
+    const later: LlmRemediationDraft = { ...repairedDraft, test_commands: ["echo metrics_exporter VERIFIED"] };
+    const repair = vi.fn().mockResolvedValueOnce(soundRepair).mockResolvedValueOnce(later);
+    const llmClient = fakeLlmClient({
+      generateRemediationDraft: vi.fn().mockResolvedValue(unsound),
+      repairRemediationDraft: repair,
+    });
+    const verifier = fakeVerifier(failingResult, passingResult);
+    const engine = new RemediationEngine({ llmClient, defaultResourceLimits, verifier, maxRepairAttempts: 3 });
+
+    await engine.remediate(incident);
+
+    const runs = (verifier.run as ReturnType<typeof vi.fn>).mock.calls.map((call) => call[0].testCommands);
+    expect(runs[0]).toEqual(soundRepair.test_commands);
+    // Every executed attempt ran the same (first sound) tests.
+    expect(new Set(runs.map((commands: string[]) => JSON.stringify(commands))).size).toBe(1);
+  });
+});
+
 describe("RemediationEngine — events", () => {
   it("emits the pipeline stages in order, including the repair loop", async () => {
     const events: PipelineEvent[] = [];

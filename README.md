@@ -1,8 +1,8 @@
 # Autonomous Infra Agent
 
-**An AI agent that fixes a crashing service, proves the fix by running it, and repairs it when the proof fails.**
+**An AI agent that fixes a crashing service, tests the fix by running it, and repairs it when the tests fail.**
 
-When a service crashes because a file is missing, the agent reads the alert, drafts the file, **executes the draft's own tests in a sandbox**, and, if they fail, sends the *real* error output back to the model and tries again. Every run ends in an explicit verdict, and a deterministic safety gate that no alert text can talk its way past decides what the agent may touch at all.
+When a service crashes because a file is missing, the agent reads the alert, drafts the file and its tests, **executes those tests in a sandbox**, and, if they fail, sends the *real* error output back to the model and tries again. Every run ends in an explicit verdict, and a deterministic safety gate that no alert text can talk its way past decides what the agent may touch at all.
 
 ![A verified run: the first draft failed in the sandbox, the agent repaired it, and the diff shows the exact edit](docs/images/dashboard-verified-light.png)
 
@@ -37,14 +37,14 @@ flowchart LR
 1. **Policy gate.** Risk is classified from the target file path *only*, by plain code with no model involved. System directories, path traversal and secret-looking paths are refused before anything is drafted, so a prompt-injected alert cannot change the outcome. One built-in scenario is exactly such an attack.
 2. **Draft.** A local model (via Ollama) writes the missing file, its own test commands, and the output marker that proves success.
 3. **Static checks.** Fast, free checks catch failure modes seen from real local models before spending a sandbox run: code wrapped in JSON, markdown fences, placeholders, commands that need a network, and success patterns like `.*` that would make verification meaningless.
-4. **Sandbox.** The draft's own tests are executed. It only passes if it exits 0 *and* prints the expected marker.
+4. **Sandbox.** The draft's tests are executed. It only passes if it exits 0 *and* prints the expected marker. The tests must import or run the drafted file (a test that never touches it is rejected before it runs), and once the tests are sound they are **frozen**: a repair may change the file, never the tests.
 5. **Repair.** On failure, the model receives its own previous answer plus the actual stderr/stdout tail and returns a corrected draft, up to `MAX_REPAIR_ATTEMPTS` times.
 
 ### Verdicts
 
 | Verdict | Meaning |
 |---|---|
-| `VERIFIED` | The draft's own tests passed in the sandbox. |
+| `VERIFIED` | The draft passed the tests it wrote, executed in the sandbox. |
 | `FAILED_VERIFICATION` | Every attempt failed. Nothing is accepted; failing safe is the correct outcome. |
 | `UNVERIFIED` | No sandbox was available, so the draft was never run. It is never presented as working. |
 | `BLOCKED` | The policy gate refused before any model was called. |
@@ -133,6 +133,7 @@ Set `TRUST_PROXY=1` behind a reverse proxy so each visitor gets their own rate l
 
 Honest limits:
 
+- **VERIFIED is evidence, not a guarantee.** The model writes the tests as well as the code, so it is graded on its own exam. The safeguards are that the tests must actually exercise the drafted file, the success marker must be specific, and the tests are frozen across repairs; the dashboard says "review the code before you deploy it" beside every verified result. It does not replace human review.
 - **Model quality is the variable.** Repair only helps if the model can act on the failure. See "Live model results" below for what a real local model did.
 - **The Docker sandbox** is covered by unit tests with a fake command runner, but was **not exercised against a real Docker daemon** in development. The local sandbox is what ran for real.
 - **State is in memory.** Run history is lost on restart, and there is no authentication. Put it behind your own gateway before exposing it beyond a demo.

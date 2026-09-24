@@ -84,7 +84,7 @@ describe.skipIf(!canRun)("dashboard (real browser, real server, real sandbox)", 
 
     expect(await page.locator(".incident").count()).toBe(6);
     await expect.poll(() => page.locator(".chip").allInnerTexts()).toEqual(["Recorded drafts", "Local sandbox · not isolated"]);
-    expect(await page.textContent(".intro")).toContain("proves its fix by actually running it");
+    expect(await page.textContent(".intro")).toContain("tests its fix by actually running it");
   }, 30_000);
 
   it("explains the replay and the non-isolated sandbox in a popover", async () => {

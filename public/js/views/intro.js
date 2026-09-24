@@ -9,7 +9,7 @@ const STEPS = [
 ];
 
 const VERDICTS = [
-  ["check", "Verified", "the tests passed."],
+  ["check", "Verified", "the draft passed the tests it wrote, run for real."],
   ["x", "Not verified", "every attempt failed, so nothing is accepted."],
   ["warning", "Unverified", "the draft could not be run."],
   ["ban", "Blocked", "the policy gate refused before any model was called."],
@@ -25,7 +25,7 @@ export function buildIntro({ onDismiss }) {
       "p",
       { class: "intro-lede" },
       "A microservice is crashing because a file is missing. An AI agent reads the alert, writes the file, and then ",
-      h("strong", {}, "proves its fix by actually running it"),
+      h("strong", {}, "tests its fix by actually running it"),
       ". If the proof fails, it reads the real error and tries again. Pick an incident and press Run."
     ),
     h(

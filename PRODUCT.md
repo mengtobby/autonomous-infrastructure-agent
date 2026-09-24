@@ -18,7 +18,7 @@ Secondary (inferred, not confirmed): the founder, who may also drive it live.
 
 ## Product Purpose
 
-When a microservice crashes because a file is missing or empty, the agent reads the alert, drafts the missing file, **proves the draft by executing it in a sandbox**, and, when the proof fails, feeds the real failure back to the model and repairs it. It ends in an explicit verdict: VERIFIED, FAILED_VERIFICATION, UNVERIFIED or BLOCKED. Success means an operator can trust a fix because it was run, not because a model said it was right.
+When a microservice crashes because a file is missing or empty, the agent reads the alert, drafts the missing file, **tests the draft by executing it in a sandbox**, and, when the proof fails, feeds the real failure back to the model and repairs it. It ends in an explicit verdict: VERIFIED, FAILED_VERIFICATION, UNVERIFIED or BLOCKED. Success means an operator can trust a fix because it was run, not because a model said it was right.
 
 ## Positioning
 

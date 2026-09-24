@@ -1,5 +1,5 @@
 import { checkPolicy } from "./policyChecker.js";
-import { lintDraft } from "./draftLint.js";
+import { lintDraft, lintTests } from "./draftLint.js";
 import type { PipelineEvent, PipelineEventListener } from "./pipelineEvents.js";
 import type { IncidentAlert } from "../schemas/incident.schema.js";
 import type { LlmClient } from "../llm/llmClient.js";
@@ -38,6 +38,25 @@ interface VerificationOutcome {
 }
 
 type Emit = (event: PipelineEvent) => void;
+
+/** The parts of a draft that define what "passing" means. */
+interface PinnedTests {
+  test_commands: string[];
+  expected_output_pattern: string;
+  container_image: string;
+}
+
+/** The tests, if they are sound enough to hold the agent to. */
+function soundTests(draft: LlmRemediationDraft, targetFilePath: string): PinnedTests | null {
+  if (lintTests(draft, targetFilePath).length > 0) {
+    return null;
+  }
+  return {
+    test_commands: draft.test_commands,
+    expected_output_pattern: draft.expected_output_pattern,
+    container_image: draft.container_image,
+  };
+}
 
 /**
  * Orchestrates a single incident: deterministic policy gate -> LLM draft ->
@@ -96,6 +115,10 @@ export class RemediationEngine {
   ): Promise<VerificationOutcome> {
     let draft = initialDraft;
     let attempts: VerificationAttempt[] = [];
+    // Once the tests are sound they are frozen: a repair may change the file,
+    // never the tests, so "the same tests now pass" is literally true and the
+    // model cannot pass by rewriting the exam.
+    let pinnedTests = soundTests(draft, incident.target_file_path);
 
     for (let attemptNumber = 1; ; attemptNumber += 1) {
       const kind = attemptNumber === 1 ? "initial" : "repair";
@@ -136,13 +159,15 @@ export class RemediationEngine {
 
       emit({ type: "draft_started", attempt: attemptNumber + 1, kind: "repair" });
       try {
-        draft = await this.llmClient.repairRemediationDraft({
+        const repaired = await this.llmClient.repairRemediationDraft({
           incident,
           policyCheck,
           previousDraft: draft,
           failure: { lintIssues: round.lintIssues, sandboxResult: round.attempt.sandbox_run_result },
           repairAttempt: attemptNumber,
         });
+        pinnedTests ??= soundTests(repaired, incident.target_file_path);
+        draft = pinnedTests ? { ...repaired, ...pinnedTests } : repaired;
       } catch (error) {
         logger.error({ err: error, attempt: attemptNumber }, "Repair attempt failed");
         return {

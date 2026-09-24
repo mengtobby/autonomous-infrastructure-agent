@@ -69,9 +69,9 @@ function describeOutcome(model) {
       return repairs > 0
         ? {
             tone: "success",
-            text: `Fixed. The first draft failed its tests; after ${repairs === 1 ? "one repair" : `${repairs} repairs`} the same tests pass. The fix was proven by running it, not assumed.`,
+            text: `Fixed. The first draft failed its tests; after ${repairs === 1 ? "one repair" : `${repairs} repairs`} the same tests pass. Both times the tests were run for real in the sandbox, not assumed.`,
           }
-        : { tone: "success", text: "The draft passed its tests on the first try, so the fix is proven by execution." };
+        : { tone: "success", text: "The draft passed its own tests on the first try, run for real in the sandbox." };
     case "FAILED_VERIFICATION":
       return {
         tone: "failure",

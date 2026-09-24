@@ -67,7 +67,7 @@ describe("describeNow", () => {
     expect(describeNow(model, null).text).toMatch(/real failure output back/);
   });
 
-  it("celebrates a repaired fix and says it was proven, not assumed", () => {
+  it("celebrates a repaired fix and says the tests really ran, rather than being assumed", () => {
     const model = run([
       { type: "policy_checked", policy },
       { type: "draft_started", attempt: 1, kind: "initial" },
@@ -81,7 +81,7 @@ describe("describeNow", () => {
     const now = describeNow(model, null);
     expect(now.tone).toBe("success");
     expect(now.text).toMatch(/one repair/);
-    expect(now.text).toMatch(/proven by running it/);
+    expect(now.text).toMatch(/run for real in the sandbox, not assumed/);
   });
 
   it("describes a first-try success without mentioning repairs", () => {
