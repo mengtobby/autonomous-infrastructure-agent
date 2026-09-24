@@ -299,6 +299,27 @@ describe("GET /api/runs/:id/events (Server-Sent Events)", () => {
     expect(text).toContain('"type":"run_finished"');
   });
 
+  it("closes the stream immediately for a finished run whose events the client already has", async () => {
+    const { app, runs } = buildTestApp();
+    const base = await listen(app);
+    const { id } = (await (await fetch(`${base}/api/runs`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ scenario_id: "token-bucket" }),
+    })).json()) as { id: string };
+    await runs.whenIdle();
+
+    // Last-Event-ID past the final event: nothing to replay, and nothing will ever arrive.
+    const response = await fetch(`${base}/api/runs/${id}/events`, { headers: { "last-event-id": "999" } });
+    const text = await Promise.race([
+      readStream(response),
+      new Promise<string>((resolve) => setTimeout(() => resolve("STREAM-STAYED-OPEN"), 2_000)),
+    ]);
+
+    expect(text).not.toBe("STREAM-STAYED-OPEN");
+    expect(text).not.toContain('"type":"run_finished"');
+  });
+
   it("ends the stream with a run_failed event when the engine throws", async () => {
     const engine = fakeEngine({ remediate: vi.fn().mockRejectedValue(new Error("model unavailable")) });
     const { app, runs } = buildTestApp(engine);

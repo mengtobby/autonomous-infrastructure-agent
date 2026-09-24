@@ -116,8 +116,15 @@ export function buildRunRouter(deps: RunRoutesDeps): Router {
       Number.isFinite(lastEventId) ? lastEventId : 0
     );
 
-    // Replaying an already-finished run closes the stream before the
-    // subscription is returned, so release it straight away in that case.
+    // A finished run emits nothing more. A reconnecting client that already
+    // holds every event (Last-Event-ID past the terminal event) would
+    // otherwise be left on an open stream that never speaks again.
+    if (runs.get(id)?.status !== "running") {
+      stream.close();
+    }
+
+    // Replaying a finished run closes the stream before the subscription is
+    // returned, so release it straight away in that case.
     if (stream.closed) {
       unsubscribe?.();
     }
