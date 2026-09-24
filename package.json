@@ -25,7 +25,8 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.evals.json --noEmit",
     "eval": "tsx evals/run.ts",
     "eval:generate": "tsx evals/run.ts --generate",
-    "eval:full": "tsx evals/run.ts --full"
+    "eval:full": "tsx evals/run.ts --full",
+    "check": "npm run typecheck && npm run lint && npm test"
   },
   "keywords": [
     "sre",

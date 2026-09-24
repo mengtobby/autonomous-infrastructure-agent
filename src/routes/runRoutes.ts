@@ -105,10 +105,7 @@ export function buildRunRouter(deps: RunRoutesDeps): Router {
     const stream = openEventStream(res);
     const lastEventId = Number.parseInt(req.header("last-event-id") ?? "", 10);
 
-    let unsubscribe: (() => void) | undefined;
-    const unsubscribeNow = (): void => unsubscribe?.();
-
-    unsubscribe = runs.subscribe(
+    const unsubscribe = runs.subscribe(
       id,
       (timed) => {
         stream.send(timed.seq, "pipeline", timed);
@@ -119,11 +116,12 @@ export function buildRunRouter(deps: RunRoutesDeps): Router {
       Number.isFinite(lastEventId) ? lastEventId : 0
     );
 
-    // The replay above can finish the stream before the subscription exists.
+    // Replaying an already-finished run closes the stream before the
+    // subscription is returned, so release it straight away in that case.
     if (stream.closed) {
-      unsubscribeNow();
+      unsubscribe?.();
     }
-    res.on("close", unsubscribeNow);
+    res.on("close", () => unsubscribe?.());
   });
 
   return router;
