@@ -3,6 +3,8 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     environment: "node",
+    // Expected-failure tests would otherwise flood the output with error logs.
+    env: { LOG_LEVEL: "silent" },
     include: ["tests/**/*.test.ts"],
     coverage: {
       provider: "v8",

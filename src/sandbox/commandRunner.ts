@@ -6,8 +6,16 @@ export interface CommandResult {
   durationMs: number;
 }
 
-/** Abstraction over process execution so the Docker sandbox runner can be
- * unit tested without spawning a real `docker` process. */
+export interface CommandOptions {
+  cwd?: string;
+  /** Replaces the environment entirely when set (nothing is inherited). */
+  env?: Record<string, string>;
+  /** Run `command` through the platform shell (needed for `&&` chains). */
+  shell?: boolean;
+}
+
+/** Abstraction over process execution so the sandbox runners can be
+ * unit tested without spawning a real process. */
 export interface CommandRunner {
-  run(command: string, args: string[], timeoutMs: number): Promise<CommandResult>;
+  run(command: string, args: string[], timeoutMs: number, options?: CommandOptions): Promise<CommandResult>;
 }

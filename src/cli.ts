@@ -6,8 +6,8 @@ import { loadConfig } from "./config/env.js";
 import { incidentAlertSchema } from "./schemas/incident.schema.js";
 import { RemediationEngine } from "./core/remediationEngine.js";
 import { OllamaLlmClient } from "./llm/ollamaClient.js";
-import { DockerSandboxRunner } from "./sandbox/dockerSandboxRunner.js";
-import { ProcessCommandRunner } from "./sandbox/processCommandRunner.js";
+import { createSandbox } from "./sandbox/createSandbox.js";
+import { toSandboxJob } from "./sandbox/sandboxRunner.js";
 import { resolveWriteTarget } from "./cli/resolveWriteTarget.js";
 import { logger } from "./logging/logger.js";
 import type { RemediationPlan } from "./schemas/remediation.schema.js";
@@ -73,12 +73,11 @@ async function runAnalyze(incidentFile: string, options: AnalyzeOptions): Promis
   let plan = await engine.remediate(incident);
 
   if (options.verify && plan.remediation.action === "CREATE_FILE") {
-    const sandboxRunner = new DockerSandboxRunner({
-      commandRunner: new ProcessCommandRunner(),
-      timeoutSeconds: config.SANDBOX_TIMEOUT_SECONDS,
-    });
-    const sandboxRunResult = await sandboxRunner.run(plan);
-    plan = { ...plan, sandbox_run_result: sandboxRunResult };
+    const sandbox = await createSandbox(config);
+    if (!sandbox.runner) {
+      throw new Error(sandbox.note);
+    }
+    plan = { ...plan, sandbox_run_result: await sandbox.runner.run(toSandboxJob(plan)) };
   }
 
   if (options.write && plan.policy_check.is_safe_to_remediate && plan.remediation.action === "CREATE_FILE") {

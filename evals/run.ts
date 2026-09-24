@@ -2,8 +2,8 @@ import { incidentAlertSchema } from "../src/schemas/incident.schema.js";
 import { checkPolicy } from "../src/core/policyChecker.js";
 import { RemediationEngine } from "../src/core/remediationEngine.js";
 import { OllamaLlmClient } from "../src/llm/ollamaClient.js";
-import { DockerSandboxRunner } from "../src/sandbox/dockerSandboxRunner.js";
-import { ProcessCommandRunner } from "../src/sandbox/processCommandRunner.js";
+import { createSandbox } from "../src/sandbox/createSandbox.js";
+import { toSandboxJob, type SandboxRunner } from "../src/sandbox/sandboxRunner.js";
 import { loadConfig } from "../src/config/env.js";
 import { allFixtures } from "./fixtures/index.js";
 import type { EvalCheck, EvalFixture, EvalResult } from "./types.js";
@@ -13,7 +13,7 @@ const args = new Set(process.argv.slice(2));
 const runGeneration = args.has("--generate") || args.has("--full");
 const runVerify = args.has("--verify") || args.has("--full");
 
-async function evaluateFixture(fixture: EvalFixture, engine: RemediationEngine | null, sandbox: DockerSandboxRunner | null): Promise<EvalResult> {
+async function evaluateFixture(fixture: EvalFixture, engine: RemediationEngine | null, sandbox: SandboxRunner | null): Promise<EvalResult> {
   const checks: EvalCheck[] = [];
   const parsed = incidentAlertSchema.safeParse(fixture.incidentRaw);
 
@@ -89,7 +89,7 @@ async function evaluateFixture(fixture: EvalFixture, engine: RemediationEngine |
   }
 
   if (runVerify && sandbox && plan.remediation.action === "CREATE_FILE") {
-    const sandboxResult = await sandbox.run(plan);
+    const sandboxResult = await sandbox.run(toSandboxJob(plan));
     checks.push({
       label: "sandbox verification (informational)",
       passed: sandboxResult.passed,
@@ -154,9 +154,7 @@ async function main(): Promise<void> {
       })
     : null;
 
-  const sandbox = runVerify
-    ? new DockerSandboxRunner({ commandRunner: new ProcessCommandRunner(), timeoutSeconds: config.SANDBOX_TIMEOUT_SECONDS })
-    : null;
+  const sandbox = runVerify ? (await createSandbox(config)).runner : null;
 
   if (runGeneration) {
     process.stdout.write(`Generation fixtures enabled — calling ${config.OLLAMA_MODEL} at ${config.OLLAMA_BASE_URL}. This takes a while.\n\n`);

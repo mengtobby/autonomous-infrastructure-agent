@@ -48,6 +48,9 @@ export const sandboxRunResultSchema = z.object({
   passed: z.boolean(),
   timed_out: z.boolean(),
   duration_ms: z.number().nonnegative(),
+  /** Set only when the sandbox itself couldn't run (e.g. Docker missing) —
+   * an environment problem, as opposed to the drafted code failing its tests. */
+  error: z.string().nullable().optional(),
 });
 export type SandboxRunResult = z.infer<typeof sandboxRunResultSchema>;
 
