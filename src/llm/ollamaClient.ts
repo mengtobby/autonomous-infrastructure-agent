@@ -1,8 +1,8 @@
 import { llmRemediationDraftSchema, type LlmRemediationDraft, type PolicyCheck } from "../schemas/remediation.schema.js";
 import type { IncidentAlert } from "../schemas/incident.schema.js";
-import { buildSystemPrompt, buildUserPrompt } from "./prompts.js";
+import { buildRepairMessages, buildSystemPrompt, buildUserPrompt, type ChatMessage } from "./prompts.js";
 import { logger } from "../logging/logger.js";
-import type { LlmClient } from "./llmClient.js";
+import type { LlmClient, RepairRequest } from "./llmClient.js";
 
 /** JSON Schema mirroring llmRemediationDraftSchema, passed as Ollama's
  * `format` so the server constrains generation to valid, on-shape JSON
@@ -73,6 +73,19 @@ export class OllamaLlmClient implements LlmClient {
   }
 
   async generateRemediationDraft(incident: IncidentAlert, policyCheck: PolicyCheck): Promise<LlmRemediationDraft> {
+    return this.requestDraft([
+      { role: "system", content: buildSystemPrompt() },
+      { role: "user", content: buildUserPrompt(incident, policyCheck) },
+    ]);
+  }
+
+  async repairRemediationDraft(request: RepairRequest): Promise<LlmRemediationDraft> {
+    return this.requestDraft(buildRepairMessages(request));
+  }
+
+  /** One structured-output chat round-trip, retried on transport errors,
+   * timeouts and unparseable/invalid model output. */
+  private async requestDraft(messages: ChatMessage[]): Promise<LlmRemediationDraft> {
     let lastError: unknown;
 
     for (let attempt = 1; attempt <= this.maxAttempts; attempt += 1) {
@@ -87,10 +100,7 @@ export class OllamaLlmClient implements LlmClient {
           body: JSON.stringify({
             model: this.model,
             stream: false,
-            messages: [
-              { role: "system", content: buildSystemPrompt() },
-              { role: "user", content: buildUserPrompt(incident, policyCheck) },
-            ],
+            messages,
             format: remediationDraftJsonSchema,
             // num_predict defaults to a mere 128 tokens in Ollama if left
             // unset — nowhere near enough for a full source file plus the

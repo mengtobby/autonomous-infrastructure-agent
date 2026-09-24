@@ -138,4 +138,27 @@ describe("OllamaLlmClient", () => {
     const init = fetchImpl.mock.calls[0][1] as RequestInit;
     expect(init.signal).toBeInstanceOf(AbortSignal);
   });
+
+  it("sends the failed draft and the real failure output back to the model when repairing", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(chatResponse(JSON.stringify(validDraft)));
+    const client = new OllamaLlmClient({ baseUrl: "http://localhost:11434", model: "m", fetchImpl });
+
+    const repaired = await client.repairRemediationDraft({
+      incident,
+      policyCheck,
+      previousDraft: { ...validDraft, full_file_content: "broken()" },
+      failure: {
+        lintIssues: [],
+        sandboxResult: { exit_code: 1, stdout: "", stderr: "NameError: broken", passed: false, timed_out: false, duration_ms: 3 },
+      },
+      repairAttempt: 1,
+    });
+
+    expect(repaired.full_file_content).toBe("print('hi')\n");
+    const body = JSON.parse((fetchImpl.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.messages.map((message: { role: string }) => message.role)).toEqual(["system", "user", "assistant", "user"]);
+    expect(body.messages[2].content).toContain("broken()");
+    expect(body.messages[3].content).toContain("NameError: broken");
+    expect(body.format).toBeTypeOf("object");
+  });
 });

@@ -54,6 +54,29 @@ export const sandboxRunResultSchema = z.object({
 });
 export type SandboxRunResult = z.infer<typeof sandboxRunResultSchema>;
 
+/** Where a run ended up. BLOCKED = policy refused before any drafting;
+ * VERIFIED = the drafted file passed its sandbox tests; FAILED_VERIFICATION =
+ * every attempt failed; UNVERIFIED = no sandbox was available or configured,
+ * so the draft is unproven either way. */
+export const verdictSchema = z.enum(["VERIFIED", "FAILED_VERIFICATION", "UNVERIFIED", "BLOCKED"]);
+export type Verdict = z.infer<typeof verdictSchema>;
+
+/** One draft-and-verify round. `kind: "repair"` rounds were produced after
+ * feeding the previous round's failure back to the model. */
+export const verificationAttemptSchema = z.object({
+  attempt: z.number().int().positive(),
+  kind: z.enum(["initial", "repair"]),
+  module_summary: z.string(),
+  full_file_content: z.string(),
+  container_image: z.string(),
+  test_commands: z.array(z.string()),
+  expected_output_pattern: z.string(),
+  lint_issues: z.array(z.string()),
+  sandbox_run_result: sandboxRunResultSchema.nullable(),
+  passed: z.boolean(),
+});
+export type VerificationAttempt = z.infer<typeof verificationAttemptSchema>;
+
 export const remediationPlanSchema = z.object({
   incident_id: z.string().min(1),
   service_name: z.string().min(1),
@@ -63,6 +86,11 @@ export const remediationPlanSchema = z.object({
   remediation: remediationSchema,
   sandbox_verification: sandboxVerificationSchema,
   sandbox_run_result: sandboxRunResultSchema.nullable().optional(),
+  verdict: verdictSchema.optional(),
+  attempts: z.array(verificationAttemptSchema).optional(),
+  sandbox_mode: z.enum(["docker", "local"]).nullable().optional(),
+  /** Why a run ended UNVERIFIED or FAILED_VERIFICATION, in plain language. */
+  verification_note: z.string().nullable().optional(),
 });
 export type RemediationPlan = z.infer<typeof remediationPlanSchema>;
 
