@@ -138,6 +138,19 @@ describe("lintTests", () => {
     });
   });
 
+  describe("hidden output", () => {
+    it.each(["python -c \"import slugify\" 2>/dev/null", "node -e \"require('./slugify')\" >/dev/null 2>&1", "python -c \"import slugify\" 2> /dev/null"])(
+      "flags a redirect that throws the output away: %s",
+      (command) => {
+        expect(has(tests({ test_commands: [command] }), /hides the output/)).toBe(true);
+      }
+    );
+
+    it("does not flag a command that merely mentions a path containing 'null'", () => {
+      expect(has(tests({ test_commands: ["python -c \"import slugify; print('nullable')\""] }), /hides the output/)).toBe(false);
+    });
+  });
+
   describe("the success marker", () => {
     it.each([".*", ".+", "", "^$", "a*", "\\s*", "[\\s\\S]*", "[\\s\\S]+", "^", "$", "(?:)", ".{0,}", "\\S"])(
       "flags the match-anything pattern %j",

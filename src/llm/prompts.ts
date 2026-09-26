@@ -2,6 +2,7 @@ import type { IncidentAlert } from "../schemas/incident.schema.js";
 import type { LlmRemediationDraft, PolicyCheck, SandboxRunResult } from "../schemas/remediation.schema.js";
 import { toContainerRelativePath } from "../sandbox/workspaceBuilder.js";
 import { renderDraft } from "./draftFormat.js";
+import { lintTests } from "../core/draftLint.js";
 import type { RepairRequest } from "./llmClient.js";
 
 /** Enough of a failing run's output to diagnose it, without flooding the
@@ -94,12 +95,21 @@ function sandboxPathNote(incident: IncidentAlert): string {
   return `In the sandbox this file is written at ${toContainerRelativePath(incident.target_file_path)}, relative to the working directory the test commands run in. Import or run it by that path.`;
 }
 
+/** The engine freezes a draft's tests once they pass the static checks (so a
+ * repair cannot "fix" a failure by weakening the proof). Say so, or the model
+ * keeps editing tests whose edits are silently discarded. */
+function testsNote(request: RepairRequest): string {
+  const testsAreSound = lintTests(request.previousDraft, request.incident.target_file_path).length === 0;
+  return testsAreSound
+    ? "Your test commands and expected output pattern passed the static checks, so they are now frozen: change the <file>, not the tests. Edits to the tests are ignored."
+    : "Keep <test_command> and <expected_output_pattern> as they are unless the problems below say they are wrong.";
+}
+
 function buildFailureFeedback(request: RepairRequest): string {
   const sections = [
     `Your draft failed verification (repair round ${request.repairAttempt}). Fix the specific problems below and return the`,
     "complete corrected reply again, in the same tagged format — the whole reply, not a diff.",
-    "Keep <test_command> and <expected_output_pattern> exactly as they are unless the problems below say they are",
-    "wrong; the usual fix is in the <file>.",
+    testsNote(request),
     sandboxPathNote(request.incident),
   ];
 
@@ -108,13 +118,13 @@ function buildFailureFeedback(request: RepairRequest): string {
   }
 
   if (request.failure.sandboxResult) {
-    sections.push("", ...describeSandboxRun(request.failure.sandboxResult));
+    sections.push("", ...describeSandboxRun(request.failure.sandboxResult, request.previousDraft.expected_output_pattern));
   }
 
   return sections.join("\n");
 }
 
-function describeSandboxRun(result: SandboxRunResult): string[] {
+function describeSandboxRun(result: SandboxRunResult, expectedPattern: string): string[] {
   const lines = ["Your test commands were executed in the sandbox:"];
 
   if (result.timed_out) {
@@ -122,7 +132,10 @@ function describeSandboxRun(result: SandboxRunResult): string[] {
   } else if (result.exit_code !== 0) {
     lines.push(`- Exit code: ${String(result.exit_code)} (must be 0)`);
   } else {
-    lines.push("- Exit code was 0, but the output did not match your expected output pattern.");
+    lines.push(
+      "- Exit code was 0, but the output did not match your expected output pattern.",
+      `- Expected output pattern (a regular expression): ${expectedPattern}`
+    );
   }
 
   if (result.stdout.trim()) {

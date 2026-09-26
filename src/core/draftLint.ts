@@ -23,6 +23,8 @@ const UNAVAILABLE_COMMAND =
 /** `python -c '…'` works in POSIX shells but not in Windows cmd.exe, where a
  * single quote is an ordinary character. Double quotes work in both. */
 const SINGLE_QUOTED_PROGRAM = /(?:^|\s)-[ce]\s+'/;
+/** `2>/dev/null`, `>/dev/null 2>&1` and friends. */
+const DISCARDED_OUTPUT = /\d?>{1,2}\s*\/dev\/null(?![\w./-])/;
 
 const MAX_PATTERN_LENGTH = 300;
 
@@ -83,6 +85,14 @@ export function lintTests(draft: LlmRemediationDraft, targetFilePath: string): s
     issues.push(
       `test_commands uses a command that cannot work in the sandbox (no network, no Docker, no package installs): "${unavailable}". ` +
         "Use only the language runtime and the standard library."
+    );
+  }
+
+  const hidden = draft.test_commands.find((command) => DISCARDED_OUTPUT.test(command));
+  if (hidden) {
+    issues.push(
+      `test_commands redirects output to /dev/null ("${truncate(hidden)}"), which hides the output the checks and any repair depend on ` +
+        "(and does not exist on every platform). Remove the redirect."
     );
   }
 

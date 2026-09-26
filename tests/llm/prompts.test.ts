@@ -104,7 +104,7 @@ describe("the tagged reply format in prompts", () => {
   });
 
   it("tells the model to keep the tests and fix the file when repairing", () => {
-    expect(lastMessage(request)).toMatch(/Keep <test_command> and <expected_output_pattern> exactly/);
+    expect(lastMessage(request)).toMatch(/Keep <test_command> and <expected_output_pattern> as they are/);
   });
 });
 
@@ -120,5 +120,30 @@ describe("telling the model where its file lives in the sandbox", () => {
 
   it("repeats it when asking for a repair, since wrong import paths are the common failure", () => {
     expect(lastMessage(withPath("/app/src/utils/retry.js"))).toContain("src/utils/retry.js");
+  });
+});
+
+describe("feedback when the output did not match the pattern", () => {
+  const mismatch: RepairRequest = {
+    ...request,
+    previousDraft: { ...request.previousDraft, test_commands: ['python -c "import x"'], expected_output_pattern: 'cpu{host="a"} 42' },
+    failure: { lintIssues: [], sandboxResult: { exit_code: 0, stdout: 'cpu{host="a"}42', stderr: "", passed: false, timed_out: false, duration_ms: 1 } },
+  };
+
+  it("shows the pattern next to the actual output, so the difference is visible", () => {
+    const content = lastMessage(mismatch);
+
+    expect(content).toContain('Expected output pattern (a regular expression): cpu{host="a"} 42');
+    expect(content).toContain('cpu{host="a"}42');
+  });
+
+  it("says the tests are frozen, so the fix has to be in the file", () => {
+    expect(lastMessage(mismatch)).toMatch(/frozen.*change the <file>, not the tests/s);
+  });
+
+  it("does not claim the tests are frozen when the static checks rejected them", () => {
+    const content = lastMessage({ ...request, failure: { lintIssues: ["pattern too broad"], sandboxResult: null } });
+
+    expect(content).not.toMatch(/frozen/);
   });
 });
