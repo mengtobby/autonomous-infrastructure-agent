@@ -93,7 +93,7 @@ node dist/cli.js analyze examples/telemetry-collector-incident.json --verify --r
 node dist/cli.js analyze incident.json --verify --write
 ```
 
-Exit codes say what happened: `0` verified (or unverified because verification wasn't requested), `1` error, `2` blocked, `3` failed verification, `4` verification requested but could not run. `--write` never writes a blocked draft or one that failed its own tests.
+Exit codes say what happened: `0` verified (or unverified because verification wasn't requested), `1` error, `2` blocked, `3` failed verification, `4` verification requested but could not run. `--write` never writes a blocked draft or one that failed its own tests, and never replaces an existing file unless you add `--force`.
 
 ### HTTP API
 

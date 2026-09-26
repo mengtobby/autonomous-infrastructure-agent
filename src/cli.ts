@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { dirname } from "node:path";
+import { readFile, writeFile } from "node:fs/promises";
 import { Command, InvalidArgumentError } from "commander";
 import { createRuntime } from "./app/createRuntime.js";
 import { loadConfig } from "./config/env.js";
@@ -8,13 +7,16 @@ import { demoScenarios, findScenario } from "./demo/scenarios/index.js";
 import { EXIT_CODES, exitCodeFor, mayWrite } from "./cli/outcome.js";
 import { formatProgress } from "./cli/progress.js";
 import { resolveWriteTarget } from "./cli/resolveWriteTarget.js";
+import { writeRemediation } from "./cli/writeRemediation.js";
 import { logger } from "./logging/logger.js";
 import { incidentAlertSchema, type IncidentAlert } from "./schemas/incident.schema.js";
 import type { RemediationPlan } from "./schemas/remediation.schema.js";
+import { VERSION } from "./version.js";
 
 interface AnalyzeOptions {
   verify: boolean;
   write: boolean;
+  force: boolean;
   out?: string;
   scenario?: string;
   repairAttempts?: number;
@@ -26,7 +28,7 @@ const program = new Command();
 program
   .name("infra-agent")
   .description("Autonomous SRE remediation agent: drafts a fix, proves it in a sandbox, repairs it if it fails")
-  .version("0.2.0");
+  .version(VERSION);
 
 program
   .command("analyze")
@@ -36,6 +38,7 @@ program
   .option("--verify", "execute the drafted fix in the sandbox, and repair it if it fails", false)
   .option("--repair-attempts <n>", "how many times a failed draft may be repaired", parseRepairAttempts)
   .option("--write", "write the verified file to its target_file_path (inside the current directory)", false)
+  .option("--force", "with --write, replace the target file if it already exists", false)
   .option("--out <file>", "write the remediation plan JSON to a file instead of stdout")
   .option("-q, --quiet", "suppress the live progress view on stderr", false)
   .action(async (incidentFile: string | undefined, options: AnalyzeOptions) => {
@@ -115,13 +118,13 @@ async function runAnalyze(
   });
 
   if (options.write) {
-    await writeIfAllowed(plan, options.verify);
+    await writeIfAllowed(plan, options.verify, options.force);
   }
 
   return { plan, verifyRequested: options.verify };
 }
 
-async function writeIfAllowed(plan: RemediationPlan, verifyRequested: boolean): Promise<void> {
+async function writeIfAllowed(plan: RemediationPlan, verifyRequested: boolean, force: boolean): Promise<void> {
   if (!mayWrite(plan, verifyRequested)) {
     logger.warn({ verdict: plan.verdict }, "Not writing the remediation file: it is not verified");
     process.stderr.write(`not writing ${plan.target_file_path}: verdict is ${plan.verdict ?? "unknown"}\n`);
@@ -134,11 +137,15 @@ async function writeIfAllowed(plan: RemediationPlan, verifyRequested: boolean): 
       { targetFilePath: plan.target_file_path, resolvedPath: targetPath },
       "Refusing to write remediation file outside the current working directory"
     );
+    process.stderr.write(`not writing ${plan.target_file_path}: it resolves outside the current directory\n`);
     return;
   }
 
-  await mkdir(dirname(targetPath), { recursive: true });
-  await writeFile(targetPath, plan.remediation.full_file_content, "utf8");
+  const outcome = await writeRemediation(targetPath, plan.remediation.full_file_content, force);
+  if (outcome === "exists") {
+    process.stderr.write(`not writing ${targetPath}: it already exists (use --force to replace it)\n`);
+    return;
+  }
   logger.info({ targetPath }, "Remediation file written to disk");
   process.stderr.write(`wrote ${targetPath}\n`);
 }
