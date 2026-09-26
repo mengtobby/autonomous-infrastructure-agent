@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
 import type { SandboxRunResult } from "../schemas/remediation.schema.js";
 import type { CommandRunner } from "./commandRunner.js";
+import { posixScript } from "./commandScript.js";
 import { validateContainerImage } from "./containerImage.js";
 import type { SandboxJob, SandboxRunner } from "./sandboxRunner.js";
-import { rejectedResult, skippedResult, toRunResult, unavailableResult } from "./sandboxResult.js";
-import { buildSandboxWorkspace } from "./workspaceBuilder.js";
+import { redactOutput, rejectedResult, skippedResult, toRunResult, unavailableResult } from "./sandboxResult.js";
+import { buildSandboxWorkspace, type SandboxWorkspace } from "./workspaceBuilder.js";
 import { logger } from "../logging/logger.js";
 
 export interface DockerSandboxRunnerOptions {
@@ -32,12 +33,20 @@ export class DockerSandboxRunner implements SandboxRunner {
       return skippedResult();
     }
 
-    const image = validateContainerImage(job.containerImage);
+    // The value that is validated must be the value that is passed to docker.
+    const containerImage = job.containerImage.trim();
+    const image = validateContainerImage(containerImage);
     if (!image.valid) {
       return rejectedResult(`Sandbox refused the container image: ${image.reason}`);
     }
 
-    const workspace = await buildSandboxWorkspace(job.targetFilePath, job.fileContent);
+    let workspace: SandboxWorkspace;
+    try {
+      workspace = await buildSandboxWorkspace(job.targetFilePath, job.fileContent);
+    } catch (error) {
+      return unavailableResult(`Could not prepare the sandbox workspace: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
     const containerName = `infra-agent-sandbox-${randomUUID()}`;
 
     try {
@@ -54,19 +63,32 @@ export class DockerSandboxRunner implements SandboxRunner {
         job.resourceLimits.cpu_limit,
         "--memory",
         job.resourceLimits.memory_limit,
+        // A drafted program gets no extra privileges, no writable root
+        // filesystem, and only a small scratch space.
+        "--cap-drop",
+        "ALL",
+        "--security-opt",
+        "no-new-privileges",
+        "--read-only",
+        "--tmpfs",
+        "/tmp:rw,size=64m",
         "-v",
         `${workspace.workspaceDir}:/workspace:ro`,
         "-w",
         "/workspace",
         "-e",
         "PYTHONPATH=/workspace",
-        job.containerImage,
+        "-e",
+        "NODE_PATH=/workspace",
+        "-e",
+        "PYTHONDONTWRITEBYTECODE=1",
+        containerImage,
         "sh",
         "-c",
-        job.testCommands.join(" && "),
+        posixScript(job.testCommands),
       ];
 
-      logger.info({ image: job.containerImage }, "Running sandbox verification in Docker");
+      logger.info({ image: containerImage }, "Running sandbox verification in Docker");
       const result = await this.commandRunner.run("docker", dockerArgs, this.timeoutSeconds * 1000);
 
       // Killing the local `docker run` CLI process (what the timeout does)
@@ -79,7 +101,7 @@ export class DockerSandboxRunner implements SandboxRunner {
         });
       }
 
-      return toRunResult(result, job.expectedOutputPattern);
+      return redactOutput(await toRunResult(result, job.expectedOutputPattern), [workspace.workspaceDir]);
     } catch (error) {
       // A rejection here means `docker` itself couldn't be spawned.
       logger.error({ err: error }, "Docker sandbox could not be started");

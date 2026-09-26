@@ -79,3 +79,29 @@ describe("ProcessCommandRunner", () => {
     await expect(runner.run("definitely-not-a-real-binary-xyz", [], 5_000)).rejects.toThrow();
   });
 });
+
+describe("ProcessCommandRunner: processes that leave children behind", () => {
+  /** Like `cmd &`: the command spawns a background process that inherits our pipes
+   * for 20s, does not wait for it, and exits. */
+  // Python's subprocess.Popen inherits the pipe handles on every platform (Node's
+  // spawn does not reliably do so on Windows), which is what reproduces the hang.
+  const script = "import subprocess, sys; subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(20)'])";
+  const backgroundJob = `python -c "${script}"`;
+
+  it("REGRESSION: does not wait for a background process that outlives a command that finished normally", async () => {
+    const startedAt = Date.now();
+    const result = await runner.run(backgroundJob, [], 15_000, { shell: true });
+
+    // The command itself exited at once; waiting for the pipes (20s, or the 15s timeout) would be a hang.
+    expect(Date.now() - startedAt).toBeLessThan(5_000);
+    expect(result.timedOut).toBe(false);
+    expect(result.exitCode).toBe(0);
+  }, 30_000);
+
+  it("REGRESSION: still returns promptly when a short timeout expires with such a background process alive", async () => {
+    const startedAt = Date.now();
+    await runner.run(backgroundJob, [], 700, { shell: true });
+
+    expect(Date.now() - startedAt).toBeLessThan(6_000);
+  }, 30_000);
+});

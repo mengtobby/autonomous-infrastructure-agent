@@ -29,6 +29,15 @@ describe("incidentAlertSchema", () => {
     expect(() => incidentAlertSchema.parse({ ...validIncident, timestamp: "2026-08-15T15:00:00-04:00" })).not.toThrow();
   });
 
+  it.each([
+    ["a directory (trailing slash)", "/app/"],
+    ["a directory (trailing backslash)", "C:\\app\\"],
+    ["a NUL character", "/app/x\0.py"],
+    ["an absurdly long path", `/app/${"a".repeat(1100)}.py`],
+  ])("rejects a target path that is %s", (_label, target_file_path) => {
+    expect(incidentAlertSchema.safeParse({ ...validIncident, target_file_path }).success).toBe(false);
+  });
+
   it("rejects an empty error_log", () => {
     expect(() => incidentAlertSchema.parse({ ...validIncident, error_log: "" })).toThrow();
   });

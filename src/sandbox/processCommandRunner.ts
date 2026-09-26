@@ -6,8 +6,22 @@ import type { CommandOptions, CommandResult, CommandRunner } from "./commandRunn
  * assertion failures and tracebacks end up. */
 const MAX_OUTPUT_CHARS = 64_000;
 
-/** Executes a command as a real child process, enforcing a hard timeout by
- * killing the whole process tree if it runs longer than allowed. */
+/** After the command itself has exited, how long to wait for its output to
+ * drain before giving up on pipes a background process still holds open. */
+const DRAIN_GRACE_MS = 300;
+
+/** After a timeout kill, how long to wait for the process to be reaped. */
+const KILL_GRACE_MS = 1_000;
+
+/**
+ * Executes a command as a real child process, enforcing a hard timeout by
+ * killing the whole process tree if it runs longer than allowed.
+ *
+ * The result is delivered when the command itself is done, not when every
+ * descendant has closed its inherited pipes. Waiting for `close` alone would
+ * let a drafted program hang the caller forever with `cmd & sleep 1e9`: the
+ * command exits, but the orphan keeps stdout open and `close` never fires.
+ */
 export class ProcessCommandRunner implements CommandRunner {
   async run(command: string, args: string[], timeoutMs: number, options: CommandOptions = {}): Promise<CommandResult> {
     const startedAt = Date.now();
@@ -26,11 +40,34 @@ export class ProcessCommandRunner implements CommandRunner {
       let stdout = "";
       let stderr = "";
       let timedOut = false;
+      let settled = false;
+      const timers: NodeJS.Timeout[] = [];
 
-      const timer = setTimeout(() => {
-        timedOut = true;
-        killProcessTree(child);
-      }, timeoutMs);
+      const settle = (exitCode: number | null): void => {
+        if (settled) return;
+        settled = true;
+        timers.forEach(clearTimeout);
+        resolve({ exitCode, stdout, stderr, timedOut, durationMs: Date.now() - startedAt });
+      };
+
+      /** Stops listening to pipes a stray descendant may hold open forever. */
+      const releasePipes = (): void => {
+        child.stdout.destroy();
+        child.stderr.destroy();
+      };
+
+      timers.push(
+        setTimeout(() => {
+          timedOut = true;
+          killProcessTree(child);
+          timers.push(
+            setTimeout(() => {
+              releasePipes();
+              settle(null);
+            }, KILL_GRACE_MS)
+          );
+        }, timeoutMs)
+      );
 
       child.stdout.on("data", (chunk: Buffer) => {
         stdout = appendCapped(stdout, chunk.toString("utf8"));
@@ -40,14 +77,23 @@ export class ProcessCommandRunner implements CommandRunner {
       });
 
       child.on("error", (error) => {
-        clearTimeout(timer);
+        timers.forEach(clearTimeout);
+        settled = true;
         reject(error);
       });
 
-      child.on("close", (exitCode) => {
-        clearTimeout(timer);
-        resolve({ exitCode, stdout, stderr, timedOut, durationMs: Date.now() - startedAt });
+      // The command is done. Normally `close` follows at once with all output;
+      // if it does not, a background process is holding the pipes, so stop waiting.
+      child.on("exit", (exitCode) => {
+        timers.push(
+          setTimeout(() => {
+            releasePipes();
+            settle(exitCode);
+          }, DRAIN_GRACE_MS)
+        );
       });
+
+      child.on("close", (exitCode) => settle(exitCode));
     });
   }
 }

@@ -1,8 +1,9 @@
 import type { SandboxRunResult } from "../schemas/remediation.schema.js";
 import type { CommandRunner } from "./commandRunner.js";
+import { localScript } from "./commandScript.js";
 import type { SandboxJob, SandboxRunner } from "./sandboxRunner.js";
-import { skippedResult, toRunResult, unavailableResult } from "./sandboxResult.js";
-import { buildSandboxWorkspace } from "./workspaceBuilder.js";
+import { redactOutput, skippedResult, toRunResult, unavailableResult } from "./sandboxResult.js";
+import { buildSandboxWorkspace, type SandboxWorkspace } from "./workspaceBuilder.js";
 import { logger } from "../logging/logger.js";
 
 /** Only these variables reach the drafted program — no API keys, tokens or
@@ -40,18 +41,23 @@ export class LocalSandboxRunner implements SandboxRunner {
       return skippedResult();
     }
 
-    const workspace = await buildSandboxWorkspace(job.targetFilePath, job.fileContent);
+    let workspace: SandboxWorkspace;
+    try {
+      workspace = await buildSandboxWorkspace(job.targetFilePath, job.fileContent);
+    } catch (error) {
+      return unavailableResult(`Could not prepare the sandbox workspace: ${error instanceof Error ? error.message : String(error)}`);
+    }
 
     try {
       logger.warn({ workspace: workspace.workspaceDir }, "Running sandbox verification locally (not isolated)");
-      // With shell:true the whole command line is passed as `command`.
-      const result = await this.commandRunner.run(job.testCommands.join(" && "), [], this.timeoutSeconds * 1000, {
+      // With shell:true the whole script is passed as `command`.
+      const result = await this.commandRunner.run(localScript(job.testCommands), [], this.timeoutSeconds * 1000, {
         cwd: workspace.workspaceDir,
         env: buildEnvironment(workspace.workspaceDir),
         shell: true,
       });
 
-      return toRunResult(result, job.expectedOutputPattern);
+      return redactOutput(await toRunResult(result, job.expectedOutputPattern), [workspace.workspaceDir]);
     } catch (error) {
       logger.error({ err: error }, "Local sandbox could not be started");
       return unavailableResult(`Local sandbox failed to start: ${error instanceof Error ? error.message : String(error)}`);
