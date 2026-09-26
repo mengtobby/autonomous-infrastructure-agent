@@ -1,17 +1,21 @@
 import type { PolicyCheck, RiskLevel } from "../schemas/remediation.schema.js";
 
+/** Matched against the canonical form of the path (forward slashes only). */
 const SYSTEM_PATH_PATTERNS = [
-  /^\/etc(\/|$)/i,
+  /^\/(private\/)?etc(\/|$)/i,
   /^\/bin(\/|$)/i,
   /^\/sbin(\/|$)/i,
   /^\/usr(\/|$)/i,
   /^\/boot(\/|$)/i,
   /^\/root(\/|$)/i,
+  /^\/lib(32|64|x32)?(\/|$)/i,
+  /^\/dev(\/|$)/i,
+  /^\/run(\/|$)/i,
   /^\/var\/run(\/|$)/i,
   /^\/sys(\/|$)/i,
   /^\/proc(\/|$)/i,
-  /^[a-z]:\\windows(\\|$)/i,
-  /^[a-z]:\\program files/i,
+  /^[a-z]:\/windows(\/|$)/i,
+  /^[a-z]:\/program files/i,
 ];
 
 /** Matches `word` (optionally pluralized) only when it appears as its own
@@ -25,9 +29,10 @@ function segmentPattern(word: string): RegExp {
 
 const SECRET_PATH_PATTERNS = [
   /\.env(\.|$)/i,
-  /\.pem$/i,
-  /\.key$/i,
-  /id_rsa/i,
+  /\.(pem|key|pfx|p12|jks|keystore)$/i,
+  /id_(rsa|dsa|ecdsa|ed25519)/i,
+  /(^|\/)\.(ssh|kube|aws|gnupg)(\/|$)/i,
+  /(^|\/)\.(npmrc|pypirc|netrc)$/i,
   segmentPattern("secret"),
   segmentPattern("credential"),
   segmentPattern("password"),
@@ -62,19 +67,25 @@ export function checkPolicy(input: PolicyCheckInput): PolicyCheck {
     return blocked("CRITICAL", "target_file_path is empty; refusing to remediate an unspecified location.");
   }
 
-  if (normalizedPath.includes("..")) {
+  if (normalizedPath.includes("\0")) {
+    return blocked("CRITICAL", "target_file_path contains a NUL character; refusing to remediate a malformed location.");
+  }
+
+  const canonical = canonicalize(normalizedPath);
+
+  if (canonical.split("/").includes("..")) {
     return blocked("CRITICAL", `Path traversal segment detected in '${normalizedPath}'; refusing to write outside the intended module tree.`);
   }
 
-  if (SYSTEM_PATH_PATTERNS.some((pattern) => pattern.test(normalizedPath))) {
+  if (SYSTEM_PATH_PATTERNS.some((pattern) => pattern.test(canonical))) {
     return blocked("CRITICAL", `'${normalizedPath}' resolves under a system directory; automated writes there are never permitted.`);
   }
 
-  if (SECRET_PATH_PATTERNS.some((pattern) => pattern.test(normalizedPath))) {
+  if (SECRET_PATH_PATTERNS.some((pattern) => pattern.test(canonical))) {
     return blocked("HIGH", `'${normalizedPath}' matches a secret/credential naming pattern; requires human review before any content is written.`);
   }
 
-  if (SHARED_INFRA_PATTERNS.some((pattern) => pattern.test(normalizedPath))) {
+  if (SHARED_INFRA_PATTERNS.some((pattern) => pattern.test(canonical))) {
     return allowed(
       "MEDIUM",
       `'${normalizedPath}' affects shared infrastructure configuration (deployment/migration/manifest); auto-remediation permitted for file creation but changes should be reviewed before deploy.`
@@ -82,6 +93,17 @@ export function checkPolicy(input: PolicyCheckInput): PolicyCheck {
   }
 
   return allowed("LOW", `'${normalizedPath}' is an ordinary application module; creating the missing file carries no elevated risk.`);
+}
+
+/** One spelling per location, so `//etc`, `/./etc` and `\etc` cannot slip past
+ * patterns written for `/etc`. A `..` segment is kept and rejected separately. */
+function canonicalize(path: string): string {
+  let result = path.replace(/\\/g, "/").replace(/\/{2,}/g, "/");
+  for (let previous = ""; previous !== result; ) {
+    previous = result;
+    result = result.replace(/\/\.(?=\/|$)/g, "");
+  }
+  return result === "" ? "/" : result;
 }
 
 function blocked(riskLevel: RiskLevel, reasoning: string): PolicyCheck {

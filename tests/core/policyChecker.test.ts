@@ -86,3 +86,69 @@ describe("checkPolicy", () => {
     expect(result.risk_reasoning.length).toBeGreaterThan(0);
   });
 });
+
+describe("checkPolicy: path tricks and wider coverage", () => {
+  const level = (targetFilePath: string) => checkPolicy({ ...baseInput, targetFilePath });
+
+  it.each([
+    "//etc/cron.d/job",
+    "/./etc/passwd",
+    "/app/../etc/passwd",
+    "/etc//passwd",
+    "\\etc\\passwd",
+    "/lib/x86_64-linux-gnu/libc.so",
+    "/lib64/ld.so",
+    "/dev/sda",
+    "/run/secrets/token",
+    "/private/etc/hosts",
+    "C:/Windows/System32/x.dll",
+    "C:\\Windows\\System32\\x.dll",
+    "C:\\\\Windows\\\\System32\\\\x.dll",
+  ])("blocks %s as CRITICAL", (path) => {
+    const result = level(path);
+    expect(result.is_safe_to_remediate).toBe(false);
+    expect(result.risk_level).toBe("CRITICAL");
+  });
+
+  it("blocks a NUL character as CRITICAL", () => {
+    expect(level("/app/x\0.py").risk_level).toBe("CRITICAL");
+  });
+
+  it.each([
+    "/home/deploy/.ssh/authorized_keys",
+    "/app/keys/id_ed25519",
+    "/app/keys/id_ecdsa",
+    "/home/u/.npmrc",
+    "/home/u/.pypirc",
+    "/home/u/.netrc",
+    "/home/u/.kube/config",
+    "/home/u/.aws/config",
+    "/app/certs/client.pfx",
+    "/app/certs/store.p12",
+    "/app/certs/trust.jks",
+    "/app/certs/app.keystore",
+    "/home/u/.gnupg/pubring.kbx",
+  ])("blocks credential path %s as HIGH", (path) => {
+    const result = level(path);
+    expect(result.is_safe_to_remediate).toBe(false);
+    expect(result.risk_level).toBe("HIGH");
+  });
+
+  it.each(["/app/utils..py", "/app/v1..2/module.py", "/app/my..module.py"])(
+    "does not treat '..' inside a file name as traversal (%s)",
+    (path) => {
+      expect(level(path).is_safe_to_remediate).toBe(true);
+    }
+  );
+
+  it.each(["/app/../x.py", "../x.py", "/app/..", "..\\x.py","/app/sub/../../x.py"])("still blocks '..' as a path segment (%s)", (path) => {
+    expect(level(path).risk_level).toBe("CRITICAL");
+  });
+
+  it.each(["/app/library/x.py", "/app/device/driver.py", "/app/runner/x.py", "/app/lib_utils.py"])(
+    "does not over-block ordinary paths that merely start like a system directory (%s)",
+    (path) => {
+      expect(level(path).risk_level).toBe("LOW");
+    }
+  );
+});
