@@ -1,8 +1,10 @@
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { localScript, posixScript } from "../../src/sandbox/commandScript.js";
+import { assertPrerequisites } from "../support/prerequisites.js";
 
 const hasSh = spawnSync("sh", ["-c", "exit 0"]).status === 0;
+assertPrerequisites("commandScript", { sh: hasSh });
 
 describe("posixScript", () => {
   it("puts each command on its own line under set -e", () => {

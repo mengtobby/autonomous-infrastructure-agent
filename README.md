@@ -159,6 +159,7 @@ Everything has a working default; see [`.env.example`](.env.example) for the ful
 
 ```bash
 npm run check         # typecheck + lint + every test (the gate)
+REQUIRE_E2E=1 npm run check   # same, but a missing browser, Python or sh fails instead of skipping
 npm run test:watch
 npm run eval          # fast: policy, adversarial and malformed-input fixtures
 npm run eval:generate # adds real drafting against your OLLAMA_MODEL (slow)

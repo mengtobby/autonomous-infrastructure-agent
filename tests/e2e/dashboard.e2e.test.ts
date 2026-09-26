@@ -12,11 +12,13 @@ import { LocalSandboxRunner } from "../../src/sandbox/localSandboxRunner.js";
 import { ProcessCommandRunner } from "../../src/sandbox/processCommandRunner.js";
 import type { RemediationPlan } from "../../src/schemas/remediation.schema.js";
 import { buildApp } from "../../src/server.js";
+import { assertPrerequisites } from "../support/prerequisites.js";
 import { findChromium, launch } from "./browser.js";
 
 const chromiumPath = findChromium();
 const hasPython = spawnSync("python --version", { shell: true, stdio: "ignore" }).status === 0;
 const canRun = Boolean(chromiumPath) && hasPython;
+assertPrerequisites("dashboard e2e", { chromium: Boolean(chromiumPath), python: hasPython });
 
 const info = {
   provider: "replay" as const,

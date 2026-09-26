@@ -7,11 +7,13 @@ import { ReplayLlmClient } from "../../src/llm/replayClient.js";
 import { LocalSandboxRunner } from "../../src/sandbox/localSandboxRunner.js";
 import { ProcessCommandRunner } from "../../src/sandbox/processCommandRunner.js";
 import { lintDraft } from "../../src/core/draftLint.js";
+import { assertPrerequisites } from "../support/prerequisites.js";
 
 /** Probed through a shell, exactly as the local sandbox runs commands (this matters on
  * Windows, where tools like pyenv expose python as a .bat shim that only a shell can run). */
 const hasBinary = (name: string): boolean => spawnSync(`${name} --version`, { shell: true, stdio: "ignore" }).status === 0;
 const hasPython = hasBinary("python");
+assertPrerequisites("demo scenarios", { python: hasPython });
 
 function buildEngine(): RemediationEngine {
   return new RemediationEngine({

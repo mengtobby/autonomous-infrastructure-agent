@@ -107,3 +107,18 @@ describe("the tagged reply format in prompts", () => {
     expect(lastMessage(request)).toMatch(/Keep <test_command> and <expected_output_pattern> exactly/);
   });
 });
+
+describe("telling the model where its file lives in the sandbox", () => {
+  const withPath = (target_file_path: string): RepairRequest => ({ ...request, incident: { ...request.incident, target_file_path } });
+
+  it("states the working-directory-relative path, with the /app/ prefix stripped as the sandbox does", () => {
+    const messages = buildRepairMessages(withPath("/app/src/utils/retry.js"));
+
+    expect(messages[1]?.content).toContain("src/utils/retry.js");
+    expect(messages[1]?.content).toMatch(/relative to the working directory/);
+  });
+
+  it("repeats it when asking for a repair, since wrong import paths are the common failure", () => {
+    expect(lastMessage(withPath("/app/src/utils/retry.js"))).toContain("src/utils/retry.js");
+  });
+});

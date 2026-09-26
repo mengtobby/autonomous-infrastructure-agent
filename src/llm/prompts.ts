@@ -1,5 +1,6 @@
 import type { IncidentAlert } from "../schemas/incident.schema.js";
 import type { LlmRemediationDraft, PolicyCheck, SandboxRunResult } from "../schemas/remediation.schema.js";
+import { toContainerRelativePath } from "../sandbox/workspaceBuilder.js";
 import { renderDraft } from "./draftFormat.js";
 import type { RepairRequest } from "./llmClient.js";
 
@@ -61,6 +62,7 @@ export function buildUserPrompt(incident: IncidentAlert, policyCheck: PolicyChec
     `Service: ${incident.service_name}`,
     `Timestamp: ${incident.timestamp}`,
     `Target file (empty/missing): ${incident.target_file_path}`,
+    sandboxPathNote(incident),
     "",
     "Error log:",
     incident.error_log,
@@ -85,12 +87,20 @@ export function buildRepairMessages(request: RepairRequest): ChatMessage[] {
   ];
 }
 
+/** Tests run from the workspace root, with the file at its container-relative
+ * path (the conventional /app/ prefix removed). Models otherwise guess the
+ * import path from the incident's absolute one and get it wrong. */
+function sandboxPathNote(incident: IncidentAlert): string {
+  return `In the sandbox this file is written at ${toContainerRelativePath(incident.target_file_path)}, relative to the working directory the test commands run in. Import or run it by that path.`;
+}
+
 function buildFailureFeedback(request: RepairRequest): string {
   const sections = [
     `Your draft failed verification (repair round ${request.repairAttempt}). Fix the specific problems below and return the`,
     "complete corrected reply again, in the same tagged format — the whole reply, not a diff.",
     "Keep <test_command> and <expected_output_pattern> exactly as they are unless the problems below say they are",
     "wrong; the usual fix is in the <file>.",
+    sandboxPathNote(request.incident),
   ];
 
   if (request.failure.lintIssues.length > 0) {
