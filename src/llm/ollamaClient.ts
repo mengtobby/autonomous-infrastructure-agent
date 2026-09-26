@@ -1,39 +1,9 @@
-import { llmRemediationDraftSchema, type LlmRemediationDraft, type PolicyCheck } from "../schemas/remediation.schema.js";
+import type { LlmRemediationDraft, PolicyCheck } from "../schemas/remediation.schema.js";
 import type { IncidentAlert } from "../schemas/incident.schema.js";
+import { parseDraft } from "./draftFormat.js";
 import { buildRepairMessages, buildSystemPrompt, buildUserPrompt, type ChatMessage } from "./prompts.js";
 import { logger } from "../logging/logger.js";
 import type { LlmClient, RepairRequest } from "./llmClient.js";
-
-/** JSON Schema mirroring llmRemediationDraftSchema, passed as Ollama's
- * `format` so the server constrains generation to valid, on-shape JSON
- * (supported by Ollama >= 0.5's structured outputs). */
-const remediationDraftJsonSchema = {
-  type: "object",
-  properties: {
-    root_cause_analysis: {
-      type: "object",
-      properties: {
-        error_type: { type: "string" },
-        failing_component: { type: "string" },
-        detailed_explanation: { type: "string" },
-      },
-      required: ["error_type", "failing_component", "detailed_explanation"],
-    },
-    module_summary: { type: "string" },
-    full_file_content: { type: "string" },
-    container_image: { type: "string" },
-    test_commands: { type: "array", items: { type: "string" } },
-    expected_output_pattern: { type: "string" },
-  },
-  required: [
-    "root_cause_analysis",
-    "module_summary",
-    "full_file_content",
-    "container_image",
-    "test_commands",
-    "expected_output_pattern",
-  ],
-} as const;
 
 interface OllamaChatResponse {
   message?: { content?: string };
@@ -52,9 +22,10 @@ export interface OllamaLlmClientOptions {
 }
 
 /** LlmClient backed by a local Ollama server's /api/chat endpoint. Nothing
- * leaves the machine: no API key, no external network call. Structured
- * output is enforced server-side via the `format` JSON schema rather than
- * tool-calling, since not every locally-hosted model supports tools. */
+ * leaves the machine: no API key, no external network call. Replies use a
+ * tagged plain-text format (see draftFormat.ts) rather than JSON, because
+ * small local models cannot reliably escape source code inside a JSON string,
+ * and rather than tool-calling, since not every local model supports tools. */
 export class OllamaLlmClient implements LlmClient {
   private readonly baseUrl: string;
   private readonly model: string;
@@ -83,8 +54,8 @@ export class OllamaLlmClient implements LlmClient {
     return this.requestDraft(buildRepairMessages(request));
   }
 
-  /** One structured-output chat round-trip, retried on transport errors,
-   * timeouts and unparseable/invalid model output. */
+  /** One chat round-trip, retried on transport errors, timeouts and replies
+   * that do not parse into a valid draft. */
   private async requestDraft(messages: ChatMessage[]): Promise<LlmRemediationDraft> {
     let lastError: unknown;
 
@@ -101,10 +72,9 @@ export class OllamaLlmClient implements LlmClient {
             model: this.model,
             stream: false,
             messages,
-            format: remediationDraftJsonSchema,
             // num_predict defaults to a mere 128 tokens in Ollama if left
             // unset — nowhere near enough for a full source file plus the
-            // surrounding JSON. -1 means "generate until the model stops
+            // surrounding tags. -1 means "generate until the model stops
             // or num_ctx is exhausted," which is what a complete draft needs.
             options: { num_ctx: this.numCtx, num_predict: -1 },
           }),
@@ -120,11 +90,7 @@ export class OllamaLlmClient implements LlmClient {
           throw new Error("Ollama response did not include message content.");
         }
 
-        const parsed = llmRemediationDraftSchema.safeParse(JSON.parse(content));
-        if (!parsed.success) {
-          throw new Error(`Model output failed schema validation: ${parsed.error.message}`);
-        }
-        return parsed.data;
+        return parseDraft(content);
       } catch (error) {
         lastError = isAbortError(error)
           ? new Error(`Ollama request timed out after ${this.requestTimeoutMs / 1000}s`)

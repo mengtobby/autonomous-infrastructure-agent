@@ -75,7 +75,7 @@ describe("buildRepairMessages", () => {
       ...request,
       failure: { lintIssues: [], sandboxResult: { exit_code: 0, stdout: "hello", stderr: "", passed: false, timed_out: false, duration_ms: 1 } },
     });
-    expect(content).toMatch(/did not match your expected_output_pattern/);
+    expect(content).toMatch(/did not match your expected output pattern/);
   });
 
   it("keeps only the tail of very long output, where the error is", () => {
@@ -86,5 +86,24 @@ describe("buildRepairMessages", () => {
     });
     expect(content).toContain("FINAL-ERROR-LINE");
     expect(content.length).toBeLessThan(4_000);
+  });
+});
+
+describe("the tagged reply format in prompts", () => {
+  it("shows a worked example in tags, with the code unescaped, and no JSON schema", () => {
+    const prompt = buildSystemPrompt();
+
+    expect(prompt).toContain("<file>");
+    expect(prompt).toContain("class Greeter:\n    def greet");
+    expect(prompt).not.toContain("full_file_content");
+    expect(prompt).not.toMatch(/JSON object/);
+  });
+
+  it("asks for double-quoted shell programs, which the static checks require", () => {
+    expect(buildSystemPrompt()).toMatch(/DOUBLE quotes/);
+  });
+
+  it("tells the model to keep the tests and fix the file when repairing", () => {
+    expect(lastMessage(request)).toMatch(/Keep <test_command> and <expected_output_pattern> exactly/);
   });
 });

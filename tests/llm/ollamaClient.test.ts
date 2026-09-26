@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { renderDraft } from "../../src/llm/draftFormat.js";
 import { OllamaLlmClient } from "../../src/llm/ollamaClient.js";
 import type { IncidentAlert } from "../../src/schemas/incident.schema.js";
 import type { PolicyCheck } from "../../src/schemas/remediation.schema.js";
@@ -37,8 +38,8 @@ function chatResponse(content: string): Response {
 }
 
 describe("OllamaLlmClient", () => {
-  it("posts to /api/chat with a JSON-schema format and parses a valid response", async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(chatResponse(JSON.stringify(validDraft)));
+  it("posts to /api/chat and parses a tagged reply", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(chatResponse(renderDraft(validDraft)));
     const client = new OllamaLlmClient({
       baseUrl: "http://localhost:11434",
       model: "qwen2.5-coder:7b",
@@ -53,12 +54,12 @@ describe("OllamaLlmClient", () => {
     expect(url).toBe("http://localhost:11434/api/chat");
     const body = JSON.parse((init as RequestInit).body as string);
     expect(body.model).toBe("qwen2.5-coder:7b");
-    expect(body.format).toBeTypeOf("object");
+    expect(body.format).toBeUndefined();
     expect(body.stream).toBe(false);
   });
 
   it("strips a trailing slash from baseUrl", async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(chatResponse(JSON.stringify(validDraft)));
+    const fetchImpl = vi.fn().mockResolvedValue(chatResponse(renderDraft(validDraft)));
     const client = new OllamaLlmClient({ baseUrl: "http://localhost:11434/", model: "m", fetchImpl });
 
     await client.generateRemediationDraft(incident, policyCheck);
@@ -66,11 +67,11 @@ describe("OllamaLlmClient", () => {
     expect(fetchImpl.mock.calls[0][0]).toBe("http://localhost:11434/api/chat");
   });
 
-  it("retries on malformed JSON content, then succeeds", async () => {
+  it("retries on a reply that does not follow the format, then succeeds", async () => {
     const fetchImpl = vi
       .fn()
-      .mockResolvedValueOnce(chatResponse("not json"))
-      .mockResolvedValueOnce(chatResponse(JSON.stringify(validDraft)));
+      .mockResolvedValueOnce(chatResponse("Sure! Here is the fix."))
+      .mockResolvedValueOnce(chatResponse(renderDraft(validDraft)));
 
     const client = new OllamaLlmClient({ baseUrl: "http://localhost:11434", model: "m", maxAttempts: 2, fetchImpl });
 
@@ -98,7 +99,7 @@ describe("OllamaLlmClient", () => {
   });
 
   it("sets num_predict to -1 so the model isn't cut off at Ollama's default 128-token cap", async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(chatResponse(JSON.stringify(validDraft)));
+    const fetchImpl = vi.fn().mockResolvedValue(chatResponse(renderDraft(validDraft)));
     const client = new OllamaLlmClient({ baseUrl: "http://localhost:11434", model: "m", fetchImpl });
 
     await client.generateRemediationDraft(incident, policyCheck);
@@ -130,7 +131,7 @@ describe("OllamaLlmClient", () => {
   });
 
   it("passes an AbortSignal on every request so a hung server doesn't block forever", async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(chatResponse(JSON.stringify(validDraft)));
+    const fetchImpl = vi.fn().mockResolvedValue(chatResponse(renderDraft(validDraft)));
     const client = new OllamaLlmClient({ baseUrl: "http://localhost:11434", model: "m", fetchImpl });
 
     await client.generateRemediationDraft(incident, policyCheck);
@@ -140,7 +141,7 @@ describe("OllamaLlmClient", () => {
   });
 
   it("sends the failed draft and the real failure output back to the model when repairing", async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(chatResponse(JSON.stringify(validDraft)));
+    const fetchImpl = vi.fn().mockResolvedValue(chatResponse(renderDraft(validDraft)));
     const client = new OllamaLlmClient({ baseUrl: "http://localhost:11434", model: "m", fetchImpl });
 
     const repaired = await client.repairRemediationDraft({
@@ -157,8 +158,9 @@ describe("OllamaLlmClient", () => {
     expect(repaired.full_file_content).toBe("print('hi')\n");
     const body = JSON.parse((fetchImpl.mock.calls[0][1] as RequestInit).body as string);
     expect(body.messages.map((message: { role: string }) => message.role)).toEqual(["system", "user", "assistant", "user"]);
-    expect(body.messages[2].content).toContain("broken()");
+    expect(body.messages[2].content).toContain(["<file>", "broken()", "</file>"].join("\n"));
+    expect(body.messages[2].content).not.toContain("full_file_content");
     expect(body.messages[3].content).toContain("NameError: broken");
-    expect(body.format).toBeTypeOf("object");
+    expect(body.format).toBeUndefined();
   });
 });
