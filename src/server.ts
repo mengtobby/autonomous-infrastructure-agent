@@ -6,9 +6,10 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { createRuntime, type RuntimeInfo } from "./app/createRuntime.js";
 import { loadConfig, type AppConfig } from "./config/env.js";
-import type { RemediationEngine } from "./core/remediationEngine.js";
+import { exposureProblem } from "./config/exposure.js";
 import { demoScenarios } from "./demo/scenarios/index.js";
 import { RunManager } from "./runs/runManager.js";
+import { redactSensitive } from "./runs/redact.js";
 import { buildIncidentRouter } from "./routes/incidentRoutes.js";
 import { buildRunRouter } from "./routes/runRoutes.js";
 import { isMainModule } from "./isMainModule.js";
@@ -19,12 +20,12 @@ import { logger } from "./logging/logger.js";
 const DEFAULT_PUBLIC_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..", "public");
 
 export interface AppDeps {
-  /** Backs the synchronous POST /incidents webhook. */
-  engine: RemediationEngine;
   runs: RunManager;
   info: RuntimeInfo;
   maxRepairAttempts: number;
   publicDir?: string;
+  /** Open SSE connections allowed at once. */
+  maxStreams?: number;
   /** Reverse proxies in front of this server; see TRUST_PROXY. */
   trustProxy?: number;
 }
@@ -60,7 +61,7 @@ export function buildApp(deps: AppDeps): express.Express {
     res.status(200).json({ status: "ok" });
   });
 
-  app.use(buildIncidentRouter(deps.engine, startWorkLimiter));
+  app.use(buildIncidentRouter(deps.runs, startWorkLimiter));
   app.use(
     buildRunRouter({
       runs: deps.runs,
@@ -68,6 +69,7 @@ export function buildApp(deps: AppDeps): express.Express {
       scenarios: demoScenarios,
       maxRepairAttempts: deps.maxRepairAttempts,
       startRunLimiter: startWorkLimiter,
+      maxStreams: deps.maxStreams,
     })
   );
 
@@ -117,11 +119,15 @@ function getClientErrorStatus(err: unknown): number | undefined {
 }
 
 export async function startServer(config: AppConfig = loadConfig()): Promise<Server> {
+  const problem = exposureProblem(config);
+  if (problem) {
+    throw new Error(problem);
+  }
+
   const runtime = await createRuntime(config, { verify: config.SANDBOX_MODE !== "off" });
-  const runs = new RunManager({ engine: runtime.engine });
+  const runs = new RunManager({ engine: runtime.engine, redact: redactSensitive });
 
   const app = buildApp({
-    engine: runtime.engine,
     runs,
     info: runtime.info,
     maxRepairAttempts: config.MAX_REPAIR_ATTEMPTS,
@@ -133,9 +139,9 @@ export async function startServer(config: AppConfig = loadConfig()): Promise<Ser
   }
 
   return new Promise<Server>((resolveServer, reject) => {
-    const server = app.listen(config.PORT, () => {
+    const server = app.listen(config.PORT, config.HOST, () => {
       logger.info(
-        { port: config.PORT, provider: runtime.info.provider, sandbox: runtime.info.sandbox.mode },
+        { host: config.HOST, port: config.PORT, provider: runtime.info.provider, sandbox: runtime.info.sandbox.mode },
         `autonomous-infra-agent listening — dashboard at http://localhost:${config.PORT}`
       );
       resolveServer(server);

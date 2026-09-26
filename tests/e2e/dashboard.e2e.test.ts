@@ -35,7 +35,7 @@ function realEngine(): RemediationEngine {
 
 async function serve(engine: RemediationEngine): Promise<{ server: Server; base: string }> {
   const runs = new RunManager({ engine });
-  const app = buildApp({ engine, runs, info, maxRepairAttempts: 2 });
+  const app = buildApp({ runs, info, maxRepairAttempts: 2 });
   const server = await new Promise<Server>((resolve) => {
     const started = app.listen(0, () => resolve(started));
   });

@@ -14,7 +14,11 @@ export interface RunRoutesDeps {
   maxRepairAttempts: number;
   /** Applied to the routes that start work, so a client can't flood the model. */
   startRunLimiter: (req: Request, res: Response, next: () => void) => void;
+  /** Open event streams allowed at once; each holds a socket and a timer. */
+  maxStreams?: number;
 }
+
+const DEFAULT_MAX_STREAMS = 200;
 
 const RUN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -28,6 +32,8 @@ const isTerminal = (event: RunEvent): boolean => event.type === "run_finished" |
 export function buildRunRouter(deps: RunRoutesDeps): Router {
   const router = Router();
   const { runs, scenarios } = deps;
+  const maxStreams = deps.maxStreams ?? DEFAULT_MAX_STREAMS;
+  let openStreams = 0;
 
   router.get("/api/meta", (_req, res) => {
     res.json({ version: VERSION, ...deps.info, maxRepairAttempts: deps.maxRepairAttempts });
@@ -101,6 +107,15 @@ export function buildRunRouter(deps: RunRoutesDeps): Router {
       res.status(404).json({ error: "run_not_found" });
       return;
     }
+
+    if (openStreams >= maxStreams) {
+      res.status(503).json({ error: "too_many_streams" });
+      return;
+    }
+    openStreams += 1;
+    res.on("close", () => {
+      openStreams -= 1;
+    });
 
     const stream = openEventStream(res);
     const lastEventId = Number.parseInt(req.header("last-event-id") ?? "", 10);

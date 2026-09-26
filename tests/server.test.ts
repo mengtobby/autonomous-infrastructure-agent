@@ -8,6 +8,7 @@ import request from "supertest";
 import { buildApp, type AppDeps } from "../src/server.js";
 import type { RemediateOptions, RemediationEngine } from "../src/core/remediationEngine.js";
 import { RunManager } from "../src/runs/runManager.js";
+import { redactSensitive } from "../src/runs/redact.js";
 import type { RemediationPlan } from "../src/schemas/remediation.schema.js";
 
 const validIncidentBody = {
@@ -57,7 +58,7 @@ const info: AppDeps["info"] = {
 
 function buildTestApp(engine: RemediationEngine = fakeEngine(), extra: Partial<AppDeps> = {}) {
   const runs = new RunManager({ engine });
-  const app = buildApp({ engine, runs, info, maxRepairAttempts: 2, publicDir: tmpdir(), ...extra });
+  const app = buildApp({ runs, info, maxRepairAttempts: 2, publicDir: tmpdir(), ...extra });
   return { app, runs, engine };
 }
 
@@ -94,6 +95,45 @@ describe("POST /incidents", () => {
 
     expect(res.status).toBe(502);
     expect(res.body.error).toBe("remediation_pipeline_failed");
+  });
+});
+
+describe("POST /incidents shares the run manager's limits", () => {
+  it("returns 429 when the concurrency cap is reached, instead of running unbounded", async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const engine = fakeEngine({ remediate: vi.fn(async () => (await gate, samplePlan)) });
+    const runs = new RunManager({ engine, maxConcurrent: 1 });
+    const app = buildApp({ runs, info, maxRepairAttempts: 2, publicDir: tmpdir() });
+
+    const first = request(app).post("/incidents").send(validIncidentBody).then((res) => res);
+    while (runs.stats().running === 0) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    const second = await request(app).post("/incidents").send(validIncidentBody);
+    release();
+    const firstResult = await first;
+
+    expect(second.status).toBe(429);
+    expect(second.body.error).toBe("too_many_runs");
+    expect(firstResult.status).toBe(200);
+  });
+
+  it("records the webhook run in history", async () => {
+    const { app } = buildTestApp();
+    await request(app).post("/incidents").send(validIncidentBody);
+
+    const list = await request(app).get("/api/runs");
+    expect(list.body).toHaveLength(1);
+    expect(list.body[0].verdict).toBe("VERIFIED");
+  });
+
+  it("does not leak the raw error text in the 502 body", async () => {
+    const { app } = buildTestApp(fakeEngine({ remediate: vi.fn().mockRejectedValue(new Error("connect ECONNREFUSED http://10.0.0.5:11434")) }));
+    const res = await request(app).post("/incidents").send(validIncidentBody);
+
+    expect(res.status).toBe(502);
+    expect(JSON.stringify(res.body)).not.toContain("10.0.0.5");
   });
 });
 
@@ -200,7 +240,7 @@ describe("POST /api/runs", () => {
     const gate = new Promise<void>((resolve) => (release = resolve));
     const engine = fakeEngine({ remediate: vi.fn(async () => (await gate, samplePlan)) });
     const runs = new RunManager({ engine, maxConcurrent: 1 });
-    const app = buildApp({ engine, runs, info, maxRepairAttempts: 2, publicDir: tmpdir() });
+    const app = buildApp({ runs, info, maxRepairAttempts: 2, publicDir: tmpdir() });
 
     const first = await request(app).post("/api/runs").send({ scenario_id: "token-bucket" });
     const second = await request(app).post("/api/runs").send({ scenario_id: "token-bucket" });
@@ -320,6 +360,64 @@ describe("GET /api/runs/:id/events (Server-Sent Events)", () => {
     expect(text).not.toContain('"type":"run_finished"');
   });
 
+  it("refuses new streams beyond the cap with 503, and frees the slot when a client leaves", async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const engine = fakeEngine({ remediate: vi.fn(async () => (await gate, samplePlan)) });
+    const runs = new RunManager({ engine });
+    const app = buildApp({ runs, info, maxRepairAttempts: 2, publicDir: tmpdir(), maxStreams: 1 });
+    const base = await listen(app);
+    const { id } = (await (await fetch(`${base}/api/runs`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ scenario_id: "token-bucket" }),
+    })).json()) as { id: string };
+
+    const controller = new AbortController();
+    const first = await fetch(`${base}/api/runs/${id}/events`, { signal: controller.signal });
+    const second = await fetch(`${base}/api/runs/${id}/events`);
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(503);
+    expect(await second.json()).toEqual({ error: "too_many_streams" });
+
+    controller.abort();
+    let third = 503;
+    for (let i = 0; i < 40 && third !== 200; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      const retry = await fetch(`${base}/api/runs/${id}/events`, { signal: AbortSignal.timeout(500) }).catch(() => null);
+      third = retry?.status ?? 503;
+      await retry?.body?.cancel().catch(() => undefined);
+    }
+    release();
+    await runs.whenIdle();
+
+    expect(third).toBe(200);
+  });
+
+  it("does not expose URLs or host paths from a failure to visitors", async () => {
+    const engine = fakeEngine({
+      remediate: vi.fn().mockRejectedValue(new Error("fetch failed: http://192.168.1.20:11434/api/chat at C:\\Users\\alice\\proj\\x.js")),
+    });
+    const runs = new RunManager({ engine, redact: redactSensitive });
+    const app = buildApp({ runs, info, maxRepairAttempts: 2, publicDir: tmpdir() });
+    const base = await listen(app);
+    const { id } = (await (await fetch(`${base}/api/runs`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ scenario_id: "token-bucket" }),
+    })).json()) as { id: string };
+    await runs.whenIdle();
+
+    const text = await readStream(await fetch(`${base}/api/runs/${id}/events`));
+    const run = await (await fetch(`${base}/api/runs/${id}`)).text();
+
+    for (const body of [text, run]) {
+      expect(body).not.toContain("192.168.1.20");
+      expect(body).not.toContain("alice");
+      expect(body).toContain("fetch failed");
+    }
+  });
+
   it("ends the stream with a run_failed event when the engine throws", async () => {
     const engine = fakeEngine({ remediate: vi.fn().mockRejectedValue(new Error("model unavailable")) });
     const { app, runs } = buildTestApp(engine);
@@ -379,7 +477,7 @@ describe("static dashboard", () => {
 describe("behind a reverse proxy", () => {
   it("rate-limits each visitor by their forwarded address once TRUST_PROXY is set", async () => {
     const engine = fakeEngine();
-    const app = buildApp({ engine, runs: new RunManager({ engine }), info, maxRepairAttempts: 2, publicDir: tmpdir(), trustProxy: 1 });
+    const app = buildApp({ runs: new RunManager({ engine }), info, maxRepairAttempts: 2, publicDir: tmpdir(), trustProxy: 1 });
 
     // 30 requests from one visitor use up their allowance...
     for (let i = 0; i < 30; i += 1) {
@@ -396,7 +494,7 @@ describe("behind a reverse proxy", () => {
 
   it("keeps visitors separate only when the proxy is trusted (otherwise the header is ignored)", async () => {
     const engine = fakeEngine();
-    const app = buildApp({ engine, runs: new RunManager({ engine }), info, maxRepairAttempts: 2, publicDir: tmpdir() });
+    const app = buildApp({ runs: new RunManager({ engine }), info, maxRepairAttempts: 2, publicDir: tmpdir() });
 
     for (let i = 0; i < 30; i += 1) {
       await request(app).post("/incidents").set("x-forwarded-for", `203.0.113.${i}`).send(validIncidentBody);

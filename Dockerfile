@@ -23,6 +23,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production \
+    HOST=0.0.0.0 \
     PORT=8787 \
     LOG_LEVEL=info
 WORKDIR /app

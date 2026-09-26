@@ -20,6 +20,9 @@ const envSchema = z.object({
   OLLAMA_MODEL: z.string().min(1).default("qwen2.5-coder:7b"),
   OLLAMA_NUM_CTX: z.coerce.number().int().positive().default(8192),
   OLLAMA_REQUEST_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(180),
+  /** Interface to listen on. Loopback by default: the dashboard can start runs
+   * and must not be reachable from the network unless the operator opts in. */
+  HOST: z.string().min(1).default("127.0.0.1"),
   PORT: z.coerce.number().int().positive().default(8787),
   /** Number of reverse proxies in front of the server (e.g. 1 on most PaaS).
    * Without it, every visitor behind a proxy shares one IP and one rate limit. */

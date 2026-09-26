@@ -33,7 +33,12 @@ export function describeTruth(meta) {
       label: "Local sandbox · not isolated",
       tone: "warning",
       title: "Local sandbox",
-      body: "Drafted code is really executed, as a child process with a scrubbed environment and a hard timeout, but without network or filesystem isolation. It is used here because every incident is one of our own recorded, synthetic examples. Production use should run the Docker sandbox.",
+      body:
+        "Drafted code is really executed, as a child process with a scrubbed environment and a hard timeout, but without network or filesystem isolation. " +
+        (meta.provider === "replay"
+          ? "It is used here because every incident is one of our own recorded, synthetic examples. "
+          : "The model is writing this code live, so run this only on a machine you are prepared to lose. ") +
+        "Production use should run the Docker sandbox.",
     };
   } else if (sandbox.mode === "docker" && sandbox.available) {
     box = {

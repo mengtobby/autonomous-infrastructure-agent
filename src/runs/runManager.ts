@@ -68,6 +68,9 @@ export interface RunManagerOptions {
   maxConcurrent?: number;
   now?: () => Date;
   newId?: () => string;
+  /** Applied to error text before it is stored, because run history is served
+   * to every visitor. Defaults to leaving text unchanged. */
+  redact?: (text: string) => string;
 }
 
 /**
@@ -81,10 +84,12 @@ export class RunManager {
   private readonly maxConcurrent: number;
   private readonly now: () => Date;
   private readonly newId: () => string;
+  private readonly redact: (text: string) => string;
 
   private records = new Map<string, RunRecord>();
   private listeners = new Map<string, Set<RunListener>>();
   private inFlight = new Set<Promise<void>>();
+  private executions = new Map<string, Promise<void>>();
 
   constructor(options: RunManagerOptions) {
     this.engine = options.engine;
@@ -92,6 +97,7 @@ export class RunManager {
     this.maxConcurrent = options.maxConcurrent ?? 3;
     this.now = options.now ?? (() => new Date());
     this.newId = options.newId ?? randomUUID;
+    this.redact = options.redact ?? ((text) => text);
   }
 
   /** Starts a run and returns immediately; progress arrives via subscribe(). */
@@ -117,6 +123,7 @@ export class RunManager {
 
     const execution = this.execute(id, incident).finally(() => this.inFlight.delete(execution));
     this.inFlight.add(execution);
+    this.executions.set(id, execution);
     return record;
   }
 
@@ -178,6 +185,13 @@ export class RunManager {
     };
   }
 
+  /** Resolves with the finished record once this run is done, or undefined for
+   * an unknown run. Lets a synchronous caller share the same concurrency cap. */
+  async completion(id: string): Promise<RunRecord | undefined> {
+    await this.executions.get(id);
+    return this.records.get(id);
+  }
+
   /** Resolves once every run started so far has finished. For tests and shutdown. */
   async whenIdle(): Promise<void> {
     while (this.inFlight.size > 0) {
@@ -188,9 +202,10 @@ export class RunManager {
   private async execute(id: string, incident: IncidentAlert): Promise<void> {
     try {
       const plan = await this.engine.remediate(incident, { onEvent: (event) => this.record(id, event) });
-      this.update(id, { status: "finished", plan, finishedAt: this.now().toISOString() });
+      this.update(id, { status: "finished", plan: this.sanitizePlan(plan), finishedAt: this.now().toISOString() });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      // The full error goes to the server log; visitors only ever see the redacted text.
+      const message = this.redact(error instanceof Error ? error.message : String(error));
       logger.error({ err: error, runId: id }, "Run failed");
       this.record(id, { type: "run_failed", message });
       this.update(id, { status: "failed", error: message, finishedAt: this.now().toISOString() });
@@ -203,7 +218,7 @@ export class RunManager {
       return;
     }
 
-    const timed: TimedRunEvent = { seq: current.events.length + 1, at: this.now().toISOString(), event };
+    const timed: TimedRunEvent = { seq: current.events.length + 1, at: this.now().toISOString(), event: this.sanitizeEvent(event) };
     this.update(id, { events: [...current.events, timed] });
 
     this.listeners.get(id)?.forEach((listener) => {
@@ -213,6 +228,14 @@ export class RunManager {
         logger.warn({ err: error, runId: id }, "Run listener threw; ignoring");
       }
     });
+  }
+
+  private sanitizeEvent(event: RunEvent): RunEvent {
+    return event.type === "run_finished" ? { ...event, plan: this.sanitizePlan(event.plan) } : event;
+  }
+
+  private sanitizePlan(plan: RemediationPlan): RemediationPlan {
+    return plan.verification_note ? { ...plan, verification_note: this.redact(plan.verification_note) } : plan;
   }
 
   private update(id: string, changes: Partial<RunRecord>): void {

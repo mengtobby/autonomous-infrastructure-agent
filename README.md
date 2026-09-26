@@ -68,7 +68,7 @@ It is built to be opened alone from a link, so it narrates itself in plain langu
 | Value | What it does |
 |---|---|
 | `ollama` (default) | Drafts and repairs come from a model running on this machine. Nothing leaves it. |
-| `replay` | Recorded drafts for the built-in scenarios. Refuses, rather than improvises, for anything else. |
+| `replay` | Recorded drafts for the built-in scenarios. Refuses, rather than improvises, for anything else, including a built-in incident with any field changed. |
 
 **Where drafts are proven** (`SANDBOX_MODE`)
 
@@ -120,7 +120,7 @@ docker run --rm -p 8787:8787 \
   autonomous-infra-agent
 ```
 
-Set `TRUST_PROXY=1` behind a reverse proxy so each visitor gets their own rate limit. The demo only executes the drafts we recorded ourselves, and custom incidents are refused in replay mode, so a visitor cannot make it run their code.
+Set `TRUST_PROXY=1` behind a reverse proxy so each visitor gets their own rate limit. The demo only executes the drafts we recorded ourselves, and an incident that is not one of the recorded scenarios exactly as recorded (any field altered) is refused in replay mode, so a visitor cannot make it run their code. Error text shown to visitors has URLs and host paths removed, and open event streams are capped.
 
 > The Dockerfile is provided but **has not been built or run in the environment this was developed in** (Docker isn't installed there). Treat it as a starting point and check it on your platform.
 
@@ -151,6 +151,7 @@ Everything has a working default; see [`.env.example`](.env.example) for the ful
 | `MAX_REPAIR_ATTEMPTS` | `2` | Repair rounds (0-5) |
 | `SANDBOX_MODE` | `docker` | `docker`, `local` or `off` |
 | `SANDBOX_LOCAL_ACKNOWLEDGE` | `false` | Required to use `local` |
+| `HOST` | `127.0.0.1` | Interface to listen on (the Docker image sets `0.0.0.0`). A live model with `SANDBOX_MODE=local` refuses to start on a non-loopback host |
 | `PORT` | `8787` | |
 | `TRUST_PROXY` | `0` | Reverse-proxy hops |
 

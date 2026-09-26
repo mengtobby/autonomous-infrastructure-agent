@@ -56,6 +56,16 @@ describe("ReplayLlmClient", () => {
     ).rejects.toThrow(/no recording for incident 'INC-UNKNOWN'.*LLM_PROVIDER=ollama/);
   });
 
+  it.each(["service_name", "target_file_path", "error_log", "service_requirements_context", "timestamp"] as const)(
+    "refuses a recorded incident id whose %s was altered",
+    async (field) => {
+      const client = new ReplayLlmClient({ scenarios: [scenario] });
+      const altered = { ...scenario.incident, [field]: field === "timestamp" ? "2027-01-01T00:00:00Z" : "changed" };
+
+      await expect(client.generateRemediationDraft(altered, policyCheck)).rejects.toThrow(/modified/);
+    }
+  );
+
   it("says so when the recording has no further repair", async () => {
     const client = new ReplayLlmClient({ scenarios: [scenario] });
     await expect(

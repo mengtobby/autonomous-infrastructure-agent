@@ -249,3 +249,42 @@ describe("RunManager", () => {
     expect(manager.stats().running).toBe(1);
   });
 });
+
+describe("RunManager: completion and redaction", () => {
+  it("completion() resolves with the finished record, and undefined for an unknown run", async () => {
+    const { engine, pending } = controllableEngine();
+    const manager = new RunManager({ engine, newId: ids() });
+    const { id } = manager.start(incident);
+
+    const waiting = manager.completion(id);
+    pending[0]?.resolve(planWith("VERIFIED"));
+
+    expect((await waiting)?.status).toBe("finished");
+    expect(await manager.completion("nope")).toBeUndefined();
+  });
+
+  it("redacts a failure message in both the run_failed event and the record, but not in the log", async () => {
+    const { engine, pending } = controllableEngine();
+    const manager = new RunManager({ engine, newId: ids(), redact: (text) => text.replace(/secret-host/g, "<host>") });
+    const { id } = manager.start(incident);
+
+    pending[0]?.reject(new Error("cannot reach secret-host"));
+    await manager.whenIdle();
+
+    const record = manager.get(id);
+    expect(record?.status).toBe("failed");
+    expect(record?.error).toBe("cannot reach <host>");
+    expect(JSON.stringify(record?.events)).not.toContain("secret-host");
+  });
+
+  it("redacts the verification note on the plan", async () => {
+    const { engine, pending } = controllableEngine();
+    const manager = new RunManager({ engine, newId: ids(), redact: () => "scrubbed" });
+    const { id } = manager.start(incident);
+
+    pending[0]?.resolve({ ...planWith("UNVERIFIED"), verification_note: "docker at /home/bob/x is missing" });
+    await manager.whenIdle();
+
+    expect(manager.get(id)?.plan?.verification_note).toBe("scrubbed");
+  });
+});
