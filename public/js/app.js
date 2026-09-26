@@ -76,17 +76,24 @@ async function startRun() {
   if (!scenario || state.run.running) return;
 
   state.run.stop?.();
-  state.run = { ...emptyRun(scenario.incident, scenario.id), running: true };
+  const started = { ...emptyRun(scenario.incident, scenario.id), running: true };
+  state.run = started;
   state.tab = "auto";
   state.notice = null;
   render();
 
   try {
     const { id } = await startScenarioRun(scenario.id);
+    // The user may have picked another incident while the request was in flight;
+    // the run still happens (it shows in history) but must not take over the view.
+    if (state.run !== started) {
+      refreshSidebarData();
+      return;
+    }
     follow(id);
     refreshSidebarData();
   } catch (error) {
-    failStart(error);
+    if (state.run === started) failStart(error);
   }
 }
 
@@ -297,10 +304,21 @@ document.addEventListener("keydown", (event) => {
 
 // ---------- routing ----------
 
-/** The URL hash is the deep link: #<scenario-id> or #run=<run-id>. Handles
+/** A hand-edited link can hold a malformed escape such as `#%E0%A4%A`, which
+ * makes decodeURIComponent throw; treat that as an ordinary unknown link. */
+function readHash() {
+  const raw = location.hash.slice(1);
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
+/** The URL hash is the deep link:#<scenario-id> or #run=<run-id>. Handles
  * the first load as well as back/forward and hand-edited links. */
 async function routeFromHash() {
-  const hash = decodeURIComponent(location.hash.slice(1));
+  const hash = readHash();
   if (hash.startsWith("run=")) {
     const id = hash.slice(4);
     if (id && id !== state.run.id) await openRun(id);
@@ -328,7 +346,10 @@ async function boot() {
 
   await routeFromHash();
   if (!state.run.incident) {
+    // A dead #run= link lands on the first incident, but keeps saying why.
+    const notice = state.notice;
     selectScenario(state.scenarios[0]?.id);
+    state.notice = notice;
   }
   render();
 }

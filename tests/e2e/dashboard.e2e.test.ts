@@ -283,3 +283,94 @@ describe.skipIf(!chromiumPath)("dashboard renders untrusted model output as iner
     }
   }, 60_000);
 });
+
+/** Routing and start-up edge cases that need a browser but not a sandbox. */
+describe.skipIf(!chromiumPath)("dashboard deep links and rapid clicking", () => {
+  const blockedPlan: RemediationPlan = {
+    incident_id: "INC-X",
+    service_name: "svc",
+    target_file_path: "/app/x.py",
+    root_cause_analysis: { error_type: "e", failing_component: "f", detailed_explanation: "d" },
+    policy_check: { is_safe_to_remediate: false, risk_level: "HIGH", risk_reasoning: "blocked for the test" },
+    remediation: { action: "CREATE_FILE", module_summary: "s", full_file_content: "" },
+    sandbox_verification: {
+      container_image: "python:3.11-slim",
+      resource_limits: { cpu_limit: "0.5", memory_limit: "256m" },
+      test_commands: [],
+      expected_output_pattern: "x",
+    },
+    verdict: "BLOCKED",
+    attempts: [],
+  };
+
+  const quickEngine = {
+    remediate: async (_incident: unknown, options: RemediateOptions = {}) => {
+      options.onEvent?.({ type: "policy_checked", policy: blockedPlan.policy_check });
+      options.onEvent?.({ type: "run_finished", plan: blockedPlan });
+      return blockedPlan;
+    },
+  } as unknown as RemediationEngine;
+
+  let server: Server;
+  let base: string;
+  let browser: Browser;
+  const pageErrors: string[] = [];
+
+  beforeAll(async () => {
+    ({ server, base } = await serve(quickEngine));
+    browser = await launch(chromiumPath as string);
+  }, 60_000);
+
+  afterAll(async () => {
+    await browser?.close();
+    if (server) await close(server);
+  });
+
+  async function open(hash: string): Promise<Page> {
+    const page = await (await browser.newContext({ reducedMotion: "reduce" })).newPage();
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    await page.goto(`${base}/${hash}`);
+    await page.waitForSelector(".incident");
+    return page;
+  }
+
+  it("survives a malformed escape in the URL hash instead of blanking the page", async () => {
+    const page = await open("#%E0%A4%A");
+
+    expect(await page.locator(".incident").count()).toBe(6);
+    expect(await page.textContent("h1")).toBeTruthy();
+    expect(pageErrors).toEqual([]);
+  }, 30_000);
+
+  it("keeps explaining a dead #run= link after falling back to the first incident", async () => {
+    const page = await open("#run=00000000-0000-0000-0000-000000000000");
+
+    expect(await page.textContent("h1")).toBeTruthy();
+    await expect.poll(() => page.locator(".notice").count()).toBe(1);
+    expect(await page.textContent(".notice")).toMatch(/no longer available/i);
+  }, 30_000);
+
+  it("does not let a slow start request take over a view the user has already left", async () => {
+    const page = await open("#telemetry-exporter");
+    await page.getByRole("button", { name: "Got it" }).click();
+    // Hold the start request so the click on another incident lands while it is in flight.
+    let releaseStart: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (releaseStart = resolve));
+    await page.route("**/api/runs", async (route) => {
+      if (route.request().method() === "POST") await held;
+      await route.continue();
+    });
+
+    await page.getByRole("button", { name: /Run this incident/ }).click();
+    await page.getByRole("button", { name: /Rate limiter/ }).click();
+    expect(await page.textContent("h1")).toMatch(/Rate limiter missing/);
+    releaseStart();
+
+    // The abandoned run still happens and shows up in history...
+    await expect.poll(async () => (await (await fetch(`${base}/api/runs`)).json() as unknown[]).length).toBe(1);
+    await page.waitForTimeout(500);
+    // ...but the view stays on the incident the user chose, with nothing running.
+    expect(await page.textContent("h1")).toMatch(/Rate limiter missing/);
+    expect(await page.locator(".verdict").count()).toBe(0);
+  }, 30_000);
+});

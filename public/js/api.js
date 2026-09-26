@@ -14,6 +14,8 @@ const FRIENDLY = {
   too_many_runs: "The agent is already busy with other runs. Wait a moment for one to finish, then try again.",
   rate_limited: "Too many requests in a short time. Wait a minute and try again.",
   unknown_scenario: "That incident no longer exists. Reload the page to refresh the list.",
+  run_not_found: "That run is no longer available. Runs are kept in memory only, so a server restart forgets them.",
+  too_many_streams: "Too many people are watching right now. Try again in a moment.",
   invalid_run_request: "Some of the incident details are missing or invalid.",
 };
 
