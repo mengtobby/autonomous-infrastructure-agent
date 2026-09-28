@@ -91,3 +91,24 @@ describe("redactOutput", () => {
     expect(JSON.stringify(result)).toBe(before);
   });
 });
+
+describe("safeRegexTest: the fast path for patterns that cannot backtrack", () => {
+  it("REGRESSION: a literal marker is not raced against the timeout, so a slow-to-start worker cannot falsely report it as abandoned", async () => {
+    // A real timeoutMs (250ms default) can be shorter than worker startup takes
+    // under load; an unsafe implementation would report "timeout" here.
+    expect(await safeRegexTest("VERIFIED", "line one\nVERIFIED\n", 1)).toBe("match");
+    expect(await safeRegexTest("VERIFIED", "nothing here", 1)).toBe("no-match");
+  });
+
+  it("still reports an invalid pattern for a malformed one that has no backtracking constructs", async () => {
+    expect(await safeRegexTest("[unclosed", "x", 1)).toBe("invalid");
+  });
+
+  it("still routes anything with a repetition, group, alternation or escape through the worker", async () => {
+    // These must still be caught by the timeout path if hostile; confirmed by the
+    // catastrophic-backtracking test above. Here we only check ordinary cases still work.
+    expect(await safeRegexTest("VERIFIED.*", "VERIFIEDxyz")).toBe("match");
+    expect(await safeRegexTest("(VERIFIED|OK)", "OK")).toBe("match");
+    expect(await safeRegexTest("VERIFIED\\d", "VERIFIED9")).toBe("match");
+  });
+});
