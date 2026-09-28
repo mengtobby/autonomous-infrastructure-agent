@@ -126,7 +126,7 @@ Set `TRUST_PROXY=1` behind a reverse proxy so each visitor gets their own rate l
 
 ## What has been verified, and what hasn't
 
-- **Automated tests (400+)** cover the policy gate (including adversarial fixtures), the engine's repair loop and every branch of it, the sandbox runners against *real processes* (including that a timeout kills the whole process tree and that secrets never reach generated code), the HTTP API and SSE stream, and the dashboard's logic. `npm run check` runs typecheck, lint and all of them.
+- **Automated tests (600+)** cover the policy gate (including adversarial fixtures), the engine's repair loop and every branch of it, the sandbox runners against *real processes* (including that a timeout kills the whole process tree and that secrets never reach generated code), the HTTP API and SSE stream, and the dashboard's logic. `npm run check` runs typecheck, lint and all of them.
 - **A real-browser end-to-end suite** drives the actual dashboard against a real server and sandbox, including a phone-width overflow check and a test that hostile model output (`<img onerror>`, `<script>`) renders as inert text. It was confirmed to fail when escaping is disabled.
 - **A contrast audit** reads the design tokens and fails the build if any text pair falls below WCAG AA in either theme. It was confirmed to catch a deliberately weakened token.
 - **Every built-in scenario runs end to end** through the real engine and real sandbox and is asserted to end in its expected verdict.
@@ -135,10 +135,23 @@ Honest limits:
 
 - **VERIFIED is evidence, not a guarantee.** The model writes the tests as well as the code, so it is graded on its own exam. The safeguards are that the tests must actually exercise the drafted file, the success marker must be specific, and the tests are frozen across repairs; the dashboard says "review the code before you deploy it" beside every verified result. It does not replace human review.
 - **Model quality is the variable.** Repair only helps if the model can act on the failure. See "Live model results" below for what a real local model did.
+- **Custom incidents are not covered by the automated suite.** They only exist with `LLM_PROVIDER=ollama`, whose output is non-deterministic; the tests that run in CI are all against `replay`.
 - **The Docker sandbox** is covered by unit tests with a fake command runner, but was **not exercised against a real Docker daemon** in development. The local sandbox is what ran for real.
 - **State is in memory.** Run history is lost on restart, and there is no authentication. Put it behind your own gateway before exposing it beyond a demo.
 - It handles one incident shape: a missing or empty file. It does not edit existing code.
 - Scenarios are synthetic. There are no customers, benchmarks or success-rate numbers here, and none should be inferred.
+
+### Live model results
+
+What actually happened running `analyze --scenario <id> --verify` against a real local model — **`llama3.1:8b` (Q4_K_M) via Ollama**, on the machine this was developed on, `SANDBOX_MODE=local`, up to 3 repair rounds — for the three scenarios whose recorded drafts require a repair or are non-trivial to get right:
+
+| Scenario | Result | What happened |
+|---|---|---|
+| `token-bucket` | **Verified**, first attempt | Correct on the first try. |
+| `retry-backoff` | Failed after 4 attempts | The model's own test command required a second, unrelated module (`./src/services/paymentClient`) that was never part of the incident — a hallucination the repair loop kept feeding the same real error back into, without the model dropping the bogus import. |
+| `telemetry-exporter` | Failed after 4 attempts | The drafted file raised a `TypeError` from a malformed `isinstance()` call; the repair rounds changed other things but never fixed that line. |
+
+This is the honest, current state of the "live" path, not the polished demo: a repair loop only helps a model that can act on the failure it's shown, and an 8B quantized model sometimes can't. Two bugs the repair loop itself does not have are worth naming, since they were found by running it for real rather than by unit tests: a false-positive "took too long to evaluate" verdict on the plain marker `VERIFIED` under CPU load (fixed — see [`safeRegex.ts`](src/sandbox/safeRegex.ts)), and no defense in the prompt against a test command that imports something the incident never mentioned (open). Re-run it yourself with `npm run build && node dist/cli.js analyze --scenario token-bucket --verify` (needs Ollama and a pulled model; see below) — the recorded/replay demo does not depend on any of this.
 
 ## Configuration
 
