@@ -14,7 +14,7 @@ Plain static HTML, CSS and vanilla ES modules in `public/`, served by the projec
 
 Primary (confirmed): investors evaluating the project, opening it **alone from a link** with no narrator. They are technically literate but are not necessarily SREs. They decide within minutes whether this is real. The page must therefore explain itself: what is happening, why it matters, and what to click first.
 
-Secondary (inferred, not confirmed): the founder, who may also drive it live.
+Secondary (inferred, not confirmed): the founder, who may also drive it live
 
 ## Product Purpose
 
