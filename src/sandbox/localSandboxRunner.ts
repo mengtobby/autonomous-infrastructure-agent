@@ -5,6 +5,7 @@ import type { SandboxJob, SandboxRunner } from "./sandboxRunner.js";
 import { redactOutput, skippedResult, toRunResult, unavailableResult } from "./sandboxResult.js";
 import { buildSandboxWorkspace, type SandboxWorkspace } from "./workspaceBuilder.js";
 import { logger } from "../logging/logger.js";
+import { errorMessage } from "../errorMessage.js";
 
 /** Only these variables reach the drafted program — no API keys, tokens or
  * other secrets from the parent environment leak into generated code. */
@@ -45,7 +46,7 @@ export class LocalSandboxRunner implements SandboxRunner {
     try {
       workspace = await buildSandboxWorkspace(job.targetFilePath, job.fileContent);
     } catch (error) {
-      return unavailableResult(`Could not prepare the sandbox workspace: ${error instanceof Error ? error.message : String(error)}`);
+      return unavailableResult(`Could not prepare the sandbox workspace: ${errorMessage(error)}`);
     }
 
     try {
@@ -60,7 +61,7 @@ export class LocalSandboxRunner implements SandboxRunner {
       return redactOutput(await toRunResult(result, job.expectedOutputPattern), [workspace.workspaceDir]);
     } catch (error) {
       logger.error({ err: error }, "Local sandbox could not be started");
-      return unavailableResult(`Local sandbox failed to start: ${error instanceof Error ? error.message : String(error)}`);
+      return unavailableResult(`Local sandbox failed to start: ${errorMessage(error)}`);
     } finally {
       await workspace.cleanup();
     }

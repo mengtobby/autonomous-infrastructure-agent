@@ -16,6 +16,7 @@ import {
 import type { SandboxRunner } from "../sandbox/sandboxRunner.js";
 import { unavailableResult } from "../sandbox/sandboxResult.js";
 import { logger } from "../logging/logger.js";
+import { errorMessage } from "../errorMessage.js";
 
 export interface RemediationEngineOptions {
   llmClient: LlmClient;
@@ -174,7 +175,7 @@ export class RemediationEngine {
           draft,
           attempts,
           verdict: "FAILED_VERIFICATION",
-          note: `The model could not produce a repair: ${error instanceof Error ? error.message : String(error)}`,
+          note: `The model could not produce a repair: ${errorMessage(error)}`,
         };
       }
     }
@@ -227,7 +228,7 @@ export class RemediationEngine {
         expectedOutputPattern: draft.expected_output_pattern,
         resourceLimits: this.defaultResourceLimits,
       })
-      .catch((error: unknown) => unavailableResult(`Sandbox failed unexpectedly: ${error instanceof Error ? error.message : String(error)}`));
+      .catch((error: unknown) => unavailableResult(`Sandbox failed unexpectedly: ${errorMessage(error)}`));
     emit({ type: "sandbox_finished", attempt: attemptNumber, result });
     return result;
   }

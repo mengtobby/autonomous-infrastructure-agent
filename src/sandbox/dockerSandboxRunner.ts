@@ -7,6 +7,7 @@ import type { SandboxJob, SandboxRunner } from "./sandboxRunner.js";
 import { redactOutput, rejectedResult, skippedResult, toRunResult, unavailableResult } from "./sandboxResult.js";
 import { buildSandboxWorkspace, type SandboxWorkspace } from "./workspaceBuilder.js";
 import { logger } from "../logging/logger.js";
+import { errorMessage } from "../errorMessage.js";
 
 export interface DockerSandboxRunnerOptions {
   commandRunner: CommandRunner;
@@ -44,7 +45,7 @@ export class DockerSandboxRunner implements SandboxRunner {
     try {
       workspace = await buildSandboxWorkspace(job.targetFilePath, job.fileContent);
     } catch (error) {
-      return unavailableResult(`Could not prepare the sandbox workspace: ${error instanceof Error ? error.message : String(error)}`);
+      return unavailableResult(`Could not prepare the sandbox workspace: ${errorMessage(error)}`);
     }
 
     const containerName = `infra-agent-sandbox-${randomUUID()}`;
@@ -105,7 +106,7 @@ export class DockerSandboxRunner implements SandboxRunner {
     } catch (error) {
       // A rejection here means `docker` itself couldn't be spawned.
       logger.error({ err: error }, "Docker sandbox could not be started");
-      return unavailableResult(`Docker is not available: ${error instanceof Error ? error.message : String(error)}`);
+      return unavailableResult(`Docker is not available: ${errorMessage(error)}`);
     } finally {
       await workspace.cleanup();
     }

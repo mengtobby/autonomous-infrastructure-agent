@@ -4,6 +4,7 @@ import type { RemediationEngine } from "../core/remediationEngine.js";
 import type { IncidentAlert } from "../schemas/incident.schema.js";
 import type { RemediationPlan, Verdict } from "../schemas/remediation.schema.js";
 import { logger } from "../logging/logger.js";
+import { errorMessage } from "../errorMessage.js";
 
 export type RunEvent = PipelineEvent | { type: "run_failed"; message: string };
 
@@ -205,7 +206,7 @@ export class RunManager {
       this.update(id, { status: "finished", plan: this.sanitizePlan(plan), finishedAt: this.now().toISOString() });
     } catch (error) {
       // The full error goes to the server log; visitors only ever see the redacted text.
-      const message = this.redact(error instanceof Error ? error.message : String(error));
+      const message = this.redact(errorMessage(error));
       logger.error({ err: error, runId: id }, "Run failed");
       this.record(id, { type: "run_failed", message });
       this.update(id, { status: "failed", error: message, finishedAt: this.now().toISOString() });

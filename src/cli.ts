@@ -11,6 +11,7 @@ import { writeRemediation } from "./cli/writeRemediation.js";
 import { logger } from "./logging/logger.js";
 import { incidentAlertSchema, type IncidentAlert } from "./schemas/incident.schema.js";
 import type { RemediationPlan } from "./schemas/remediation.schema.js";
+import { errorMessage } from "./errorMessage.js";
 import { VERSION } from "./version.js";
 
 interface AnalyzeOptions {
@@ -56,7 +57,7 @@ program
       process.exitCode = exitCodeFor(plan, verifyRequested);
     } catch (error) {
       logger.error({ err: error }, "Failed to analyze incident");
-      process.stderr.write(`error: ${error instanceof Error ? error.message : String(error)}\n`);
+      process.stderr.write(`error: ${errorMessage(error)}\n`);
       process.exitCode = EXIT_CODES.ERROR;
     }
   });
