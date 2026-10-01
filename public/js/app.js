@@ -1,4 +1,5 @@
-import { ApiError, followRun, getMeta, getRun, getRuns, getScenarios, getStats, startCustomRun, startScenarioRun } from "./api.js";
+import { describeError } from "./describeError.js";
+import { followRun, getMeta, getRun, getRuns, getScenarios, getStats, startCustomRun, startScenarioRun } from "./api.js";
 import { h, mount, preservingFocus } from "./dom.js";
 import { icon } from "./icons.js";
 import { applyEvent, initialModel } from "./runModel.js";
@@ -117,7 +118,7 @@ async function startCustom(values) {
     follow(id);
     refreshSidebarData();
   } catch (error) {
-    state.custom = { busy: false, error: error instanceof ApiError ? error.message : String(error) };
+    state.custom = { busy: false, error: describeError(error) };
     render();
   }
 }
@@ -134,14 +135,14 @@ async function openRun(id) {
     follow(id);
     render();
   } catch (error) {
-    state.notice = error instanceof ApiError ? error.message : String(error);
+    state.notice = describeError(error);
     render();
   }
 }
 
 function failStart(error) {
   state.run = { ...state.run, running: false };
-  state.notice = error instanceof ApiError ? error.message : `Could not start the run: ${String(error)}`;
+  state.notice = describeError(error, `Could not start the run: ${String(error)}`);
   render();
 }
 
@@ -339,7 +340,7 @@ async function boot() {
     const [meta, scenarios, runs, stats] = await Promise.all([getMeta(), getScenarios(), getRuns(), getStats()]);
     Object.assign(state, { meta, scenarios, runs, stats });
   } catch (error) {
-    state.loadError = error instanceof ApiError ? error.message : "Could not load the agent's incidents.";
+    state.loadError = describeError(error, "Could not load the agent's incidents.");
     render();
     return;
   }
