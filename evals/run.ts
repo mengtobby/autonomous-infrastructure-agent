@@ -1,3 +1,4 @@
+import { errorMessage } from "../src/errorMessage.js";
 import { incidentAlertSchema } from "../src/schemas/incident.schema.js";
 import { checkPolicy } from "../src/core/policyChecker.js";
 import { RemediationEngine } from "../src/core/remediationEngine.js";
@@ -71,7 +72,7 @@ async function evaluateFixture(fixture: EvalFixture, engine: RemediationEngine |
     checks.push({
       label: "remediation.remediate() completed",
       passed: false,
-      detail: error instanceof Error ? error.message : String(error),
+      detail: errorMessage(error),
     });
     return { fixture, skipped: false, checks };
   }
